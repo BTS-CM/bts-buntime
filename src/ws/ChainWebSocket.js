@@ -29,6 +29,12 @@ class ChainWebSocket {
     this.connect_promise = this.connect(ws_server, connectTimeout);
   }
 
+  /**
+   * Called to establish an WSS connection
+   * @param {String} server 
+   * @param {Number} connectTimeout 
+   * @returns 
+   */
   connect = (server, connectTimeout) =>
     new Promise((resolve, reject) => {
       this.current_reject = reject;
@@ -44,7 +50,7 @@ class ChainWebSocket {
       this.ws.addEventListener("open", () => this.onOpen());
       this.ws.addEventListener("error", event => this.onError(event));
       this.ws.addEventListener("message", event => this.onMessage(event));
-      this.ws.addEventListener("close", () => this.onclose());
+      this.ws.addEventListener("close", () => this.onClose());
 
       this.connectionTimeout = setTimeout(() => {
         if (this.current_reject) {
@@ -61,6 +67,9 @@ class ChainWebSocket {
       }, connectTimeout);
     });
 
+  /**
+   * Called when the WSS connection is initialized
+   */
   onOpen = () => {
     clearTimeout(this.connectionTimeout);
     if (this.statusCb) {
@@ -88,24 +97,39 @@ class ChainWebSocket {
     this.current_resolve();
   };
 
+  /**
+   * Called when an error is encounrtered with the WSS connection
+   * @param {Error} error 
+   */
   onError = error => {
     if (this.keepalive_timer) {
       clearInterval(this.keepalive_timer);
       this.keepalive_timer = undefined;
     }
+    
     clearTimeout(this.connectionTimeout);
-    if (this.statusCb) this.statusCb("error");
+    
+    if (this.statusCb) {
+      this.statusCb("error");
+    }
 
     if (this.current_reject) {
       this.current_reject(error);
     }
   };
 
+  /**
+   * Called when the WSS connection gets data back from a request
+   * @param {String} message 
+   */
   onMessage = message => {
     this.recv_life = MAX_RECV_LIFE;
     this.listener(JSON.parse(message.data));
   };
 
+  /**
+   * Called when the WSS connection closes
+   */
   onClose = () => {
     this.closed = true;
     if (this.keepalive_timer) {
@@ -113,14 +137,20 @@ class ChainWebSocket {
       this.keepalive_timer = undefined;
     }
 
-    for (var cbId = this.responseCbId + 1; cbId <= this.cbId; cbId += 1)
+    for (var cbId = this.responseCbId + 1; cbId <= this.cbId; cbId += 1) {
       this.cbs[cbId].reject(new Error("connection closed"));
+    }
 
     this.statusCb && this.statusCb("closed");
     this._closeCb && this._closeCb();
     this.on_close && this.on_close();
   };
 
+  /**
+   * WSS node login mechanism - use with local nodes
+   * @param {Array} params 
+   * @returns {Promise}
+   */
   call = params => {
     if (this.ws.readyState !== 1) {
       return Promise.reject(
@@ -233,9 +263,19 @@ class ChainWebSocket {
     }
   };
 
-  login = (user, password) =>
+  /**
+   * WSS Account login mechanism
+   * @param {String} user 
+   * @param {String} password 
+   */
+  login = (user, password) => {
     this.connect_promise.then(() => this.call([1, "login", [user, password]]));
+  }
 
+  /**
+   * Manually closing the WSS connection
+   * @returns {Promise}
+   */
   close = () =>
     new Promise(res => {
       clearInterval(this.keepalive_timer);
