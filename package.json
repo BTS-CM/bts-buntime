@@ -1,0 +1,25 @@
+{
+  "name": "bts-buntime",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "assert": "^2.1.0",
+    "bigi": "^1.4.2",
+    "bs58": "^5.0.0",
+    "create-hash": "^1.2.0",
+    "create-hmac": "^1.1.7",
+    "crypto-js": "^4.1.1",
+    "deep-equal": "^2.2.2",
+    "ecurve": "^1.0.6",
+    "event-emitter": "^0.3.5",
+    "immutable": "^5.0.0-beta.4",
+    "safe-buffer": "^5.2.1",
+    "secure-random": "^1.1.2"
+  }
+}
