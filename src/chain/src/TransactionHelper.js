@@ -1,7 +1,7 @@
 var helper = {};
 
 import secureRandom from "secure-random";
-import {Long} from "bytebuffer";
+import {Long} from "@exodus/bytebuffer";
 
 import {Signature} from "../../ecc";
 import {ops} from "../../serializer";

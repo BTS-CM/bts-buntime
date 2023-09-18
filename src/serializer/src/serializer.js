@@ -1,4 +1,4 @@
-import ByteBuffer from "bytebuffer";
+import ByteBuffer from "@exodus/bytebuffer";
 import EC from "./error_with_cause";
 const Buffer = require("safe-buffer").Buffer;
 

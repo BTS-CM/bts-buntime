@@ -1,4 +1,4 @@
-import ByteBuffer from "bytebuffer";
+import ByteBuffer from "@exodus/bytebuffer";
 const Buffer = require("safe-buffer").Buffer;
 
 var toByteBuffer = function(type, object) {

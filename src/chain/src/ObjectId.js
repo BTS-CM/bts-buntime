@@ -1,4 +1,4 @@
-import {Long} from "bytebuffer";
+import {Long} from "@exodus/bytebuffer";
 
 import v from "../../serializer/src/SerializerValidation";
 

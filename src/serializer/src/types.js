@@ -1,5 +1,5 @@
 // Low-level types that make up operations
-import ByteBuffer from "bytebuffer";
+import ByteBuffer from "@exodus/bytebuffer";
 
 import v from "./SerializerValidation";
 import fp from "./FastParser";
