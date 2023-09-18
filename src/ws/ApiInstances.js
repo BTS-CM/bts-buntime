@@ -4,12 +4,12 @@ import ChainConfig from "./ChainConfig";
 
 var autoReconnect = false; // by default don't use reconnecting-websocket
 
-var existingApis = null;
+var Api = null;
 var statusCb = null;
 
 const get = (name) => {
-  new Proxy([], {
-    get: (_, method) => (...args) => existingApis[name].exec(method, [...args])
+  return new Proxy([], {
+    get: (_, method) => (...args) => Api[name].exec(method, [...args])
   });
 }
 
@@ -19,10 +19,11 @@ const newApis = () => ({
     connectTimeout,
     optionalApis = { enableCrypto: false, enableOrders: false }
   ) => {
-    // console.log("INFO\tApiInstances\tconnect\t", cs);
-    existingApis.url = cs;
-    let rpc_user = "",
-      rpc_password = "";
+    Api.url = cs;
+    
+    let rpc_user = "";
+    let rpc_password = "";
+
     if (
       typeof window !== "undefined" &&
       window.location &&
@@ -32,76 +33,81 @@ const newApis = () => ({
       throw new Error("Secure domains require wss connection");
     }
 
-    if (existingApis.ws_rpc) {
-      existingApis.ws_rpc.statusCb = null;
-      existingApis.ws_rpc.keepAliveCb = null;
-      existingApis.ws_rpc.on_close = null;
-      existingApis.ws_rpc.on_reconnect = null;
+    if (Api.ws_rpc) {
+      Api.ws_rpc.statusCb = null;
+      Api.ws_rpc.keepAliveCb = null;
+      Api.ws_rpc.on_close = null;
+      Api.ws_rpc.on_reconnect = null;
     }
-    existingApis.ws_rpc = new ChainWebSocket(
+    
+    console.log({ws_rpc_1: Api.ws_rpc});
+
+    Api.ws_rpc = new ChainWebSocket(
       cs,
-      existingApis.statusCb,
+      Api.statusCb,
       connectTimeout,
       autoReconnect,
       closed => {
-        if (existingApis._db && !closed) {
-          existingApis._db.exec("get_objects", [["2.1.0"]]).catch(e => {});
+        if (Api._db && !closed) {
+          Api._db.exec("get_objects", [["2.1.0"]]).catch(e => {});
         }
       }
     );
 
-    existingApis.init_promise = existingApis.ws_rpc
+    console.log({ws_rpc_2: Api.ws_rpc});
+
+    Api.init_promise = Api.ws_rpc
       .login(rpc_user, rpc_password)
       .then(() => {
-        existingApis._db = new GrapheneApi(existingApis.ws_rpc, "database");
-        existingApis._net = new GrapheneApi(existingApis.ws_rpc, "network_broadcast");
-        existingApis._hist = new GrapheneApi(existingApis.ws_rpc, "history");
+        Api._db = new GrapheneApi(Api.ws_rpc, "database");
+        Api._net = new GrapheneApi(Api.ws_rpc, "network_broadcast");
+        Api._hist = new GrapheneApi(Api.ws_rpc, "history");
         if (optionalApis.enableOrders) {
-          existingApis._orders = new GrapheneApi(existingApis.ws_rpc, "orders");
+          Api._orders = new GrapheneApi(Api.ws_rpc, "orders");
         }
         if (optionalApis.enableCrypto) {
-          existingApis._crypt = new GrapheneApi(existingApis.ws_rpc, "crypto");
+          Api._crypt = new GrapheneApi(Api.ws_rpc, "crypto");
         }
-        var db_promise = existingApis._db.init().then(() => {
-          return existingApis._db.exec("get_chain_id", []).then(_chain_id => {
-            existingApis.chain_id = _chain_id;
+        var db_promise = Api._db.init().then(() => {
+          return Api._db.exec("get_chain_id", []).then(_chain_id => {
+            Api.chain_id = _chain_id;
             return ChainConfig.setChainId(_chain_id);
           });
         });
-        existingApis.ws_rpc.on_reconnect = () => {
-          if (!existingApis.ws_rpc) {
+        Api.ws_rpc.on_reconnect = () => {
+          if (!Api.ws_rpc) {
             return;
           }
-          existingApis.ws_rpc.login("", "").then(() => {
-            existingApis._db.init().then(() => {
-              if (existingApis.statusCb) {
-                existingApis.statusCb("reconnect");
+          Api.ws_rpc.login("", "").then(() => {
+            Api._db.init().then(() => {
+              if (Api.statusCb) {
+                Api.statusCb("reconnect");
               }
             });
-            existingApis._net.init();
-            existingApis._hist.init();
+            Api._net.init();
+            Api._hist.init();
             if (optionalApis.enableOrders) {
-              existingApis._orders.init();
+              Api._orders.init();
             }
             if (optionalApis.enableCrypto) {
-              existingApis._crypt.init();
+              Api._crypt.init();
             }
           });
         };
-        existingApis.ws_rpc.on_close = () => {
-          existingApis.close().then(() => {
-            if (existingApis.closeCb) {
-              existingApis.closeCb();
+        Api.ws_rpc.on_close = () => {
+          Api.close().then(() => {
+            if (Api.closeCb) {
+              Api.closeCb();
             }
           });
         };
-        let initPromises = [db_promise, existingApis._net.init(), existingApis._hist.init()];
+        let initPromises = [db_promise, Api._net.init(), Api._hist.init()];
 
         if (optionalApis.enableOrders) {
-          initPromises.push(existingApis._orders.init());
+          initPromises.push(Api._orders.init());
         }
         if (optionalApis.enableCrypto) {
-          initPromises.push(existingApis._crypt.init());
+          initPromises.push(Api._crypt.init());
         }
         return Promise.all(initPromises);
       })
@@ -111,30 +117,30 @@ const newApis = () => ({
           "Failed to initialize with error",
           err && err.message
         );
-        return existingApis.close().then(() => {
+        return Api.close().then(() => {
           throw err;
         });
       });
   },
   close: async () => {
-    if (existingApis.ws_rpc && existingApis.ws_rpc.ws.readyState === 1) {
-      await existingApis.ws_rpc.close();
+    if (Api.ws_rpc && Api.ws_rpc.ws.readyState === 1) {
+      await Api.ws_rpc.close();
     }
 
-    existingApis.ws_rpc = null;
+    Api.ws_rpc = null;
   },
-  db_api: () => existingApis._db,
-  network_api: () => existingApis._net,
-  history_api: () => existingApis._hist,
-  crypto_api: () => existingApis._crypt,
-  orders_api: () => existingApis._orders,
-  setRpcConnectionStatusCallback: callback => (existingApis.statusCb = callback)
+  db_api: () => Api._db,
+  network_api: () => Api._net,
+  history_api: () => Api._hist,
+  crypto_api: () => Api._crypt,
+  orders_api: () => Api._orders,
+  setRpcConnectionStatusCallback: callback => (Api.statusCb = callback)
 });
 
 const setRpcConnectionStatusCallback = callback => {
   statusCb = callback;
-  if (existingApis) {
-    existingApis.setRpcConnectionStatusCallback(callback)
+  if (Api) {
+    Api.setRpcConnectionStatusCallback(callback)
   };
 };
 
@@ -150,14 +156,14 @@ const reset = (
   closeCb
 ) => {
   return close().then(() => {
-    existingApis = newApis();
-    existingApis.setRpcConnectionStatusCallback(statusCb);
+    Api = newApis();
+    Api.setRpcConnectionStatusCallback(statusCb);
 
-    if (existingApis && connect) {
-      existingApis.connect(cs, connectTimeout, optionalApis, closeCb);
+    if (Api && connect) {
+      Api.connect(cs, connectTimeout, optionalApis, closeCb);
     }
 
-    return existingApis;
+    return Api;
   });
 };
 
@@ -168,20 +174,20 @@ const instance = (
   optionalApis,
   closeCb
 ) => {
-  if (!existingApis) {
-    existingApis = newApis();
-    existingApis.setRpcConnectionStatusCallback(statusCb);
+  if (!Api) {
+    Api = newApis();
+    Api.setRpcConnectionStatusCallback(statusCb);
   }
 
-  if (existingApis && connect) {
-    existingApis.connect(cs, connectTimeout, optionalApis);
+  if (Api && connect) {
+    Api.connect(cs, connectTimeout, optionalApis);
   }
 
   if (closeCb) {
-    existingApis.closeCb = closeCb
+    Api.closeCb = closeCb
   };
 
-  return existingApis;
+  return Api;
 };
 
 const chainId = () => {
@@ -189,9 +195,9 @@ const chainId = () => {
 };
 
 const close = async () => {
-  if (existingApis) {
-    await existingApis.close();
-    existingApis = null;
+  if (Api) {
+    await Api.close();
+    Api = null;
   }
 };
 
