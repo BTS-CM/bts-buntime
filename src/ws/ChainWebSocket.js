@@ -35,7 +35,7 @@ class ChainWebSocket {
       this.current_resolve = resolve;
 
       try {
-        this.ws = new WebSocket(server);
+        this.ws = new WebSocket(server); // bun websocket client
       } catch (error) {
         this.ws = { readyState: 3, close: () => {} }; // DISCONNECTED
         reject(new Error("Invalid url", server, " closed"));

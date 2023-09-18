@@ -1,6 +1,4 @@
 // Low-level types that make up operations
-import ByteBuffer from "bytebuffer";
-
 import v from "./SerializerValidation";
 import fp from "./FastParser";
 
@@ -15,6 +13,33 @@ const Buffer = require("safe-buffer").Buffer;
 var Types = {};
 
 const HEX_DUMP = process.env.npm_config__graphene_serializer_hex_dump;
+
+function encodeVarint32(value) {
+    const result = [];
+    while (value >= 0x80) {
+      result.push((value & 0x7f) | 0x80);
+      value >>>= 7;
+    }
+    result.push(value);
+    return new Uint8Array(result);
+}
+
+function decodeVarint32(buffer, offset) {
+    let value = 0;
+    let shift = 0;
+    let length = 0;
+    let b;
+    do {
+      if (offset >= buffer.length) {
+        throw new Error('unexpected end of buffer');
+      }
+      b = buffer[offset++];
+      value |= (b & 0x7f) << shift;
+      shift += 7;
+      length++;
+    } while (b & 0x80);
+    return { value, length };
+}
 
 Types.uint8 = {
     fromByteBuffer(b) {
@@ -704,7 +729,6 @@ Types.optional = function(st_operation) {
     };
 };
 
-
 Types.extension = function (fields_def) {
     // fields_def is an array
     v.require_array(fields_def, (r) => {
@@ -714,46 +738,49 @@ Types.extension = function (fields_def) {
     //v.required(st_operation, "st_operation");
     return {
         fromByteBuffer(b) {
-            let count = b.readVarint32();
+            let offset = 0;
+            let count = decodeVarint32(b, offset);
+            offset += count.length;
+            count = count.value;
             if (count === 0) {
-                return undefined;
+              return undefined;
             }
             let o = {};
             if (count > fields_def.length) {
-                throw new Error('two many fields');
+              throw new Error('two many fields');
             }
             while (count > 0) {
-                let index = b.readVarint32();
-                if (index >= fields_def.length) {
-                    throw new Error('index out of range');
-                }
-                let operation = fields_def[index];
-                o[operation.name] = operation.type.fromByteBuffer(b);
-                count--;
+              const index = decodeVarint32(b, offset);
+              offset += index.length;
+              if (index.value >= fields_def.length) {
+                throw new Error('index out of range');
+              }
+              const operation = fields_def[index.value];
+              const value = operation.type.fromByteBuffer(b.subarray(offset));
+              o[operation.name] = value.value;
+              offset += value.length;
+              count--;
             }
             return o;
-            // return st_operation.fromByteBuffer(b);
         },
         appendByteBuffer(b, object) {
-            //let tempBuffer = new Buffer([]);
-            let tempBuffer = new ByteBuffer(
-                ByteBuffer.DEFAULT_CAPACITY,
-                ByteBuffer.LITTLE_ENDIAN
-            );
-            var count = 0;
+            const tempBuffer = new Uint8Array(16);
+            let offset = 0;
+            let count = 0;
             if (object) {
-                fields_def.forEach((f, i) => {
-                    if (object[f.name] !== undefined && object[f.name] !== null) {
-                        tempBuffer.writeVarint32(i);
-                        f.type.appendByteBuffer(tempBuffer, object[f.name]);
-                        count++;
-                    }
-                });
+              fields_def.forEach((f, i) => {
+                if (object[f.name] !== undefined && object[f.name] !== null) {
+                  const varint32 = encodeVarint32(i);
+                  tempBuffer.set(varint32, offset);
+                  offset += varint32.length;
+                  offset += f.type.appendByteBuffer(tempBuffer, offset, object[f.name]);
+                  count++;
+                }
+              });
             }
-            b.writeVarint32(count);
-            tempBuffer.flip();
-            b.append(tempBuffer);
-
+            const countVarint32 = encodeVarint32(count);
+            b.set(countVarint32, 0);
+            b.set(tempBuffer.subarray(0, offset), countVarint32.length);
             return;
         },
         fromObject(object) {

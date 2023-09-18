@@ -1,4 +1,3 @@
-import {Long} from "bytebuffer";
 import ChainTypes from "../../chain/src/ChainTypes";
 
 var MAX_SAFE_INT = 9007199254740991;
@@ -32,8 +31,9 @@ var _my = {
         return value;
     },
     require_long(value, field_name = "") {
-        if (!Long.isLong(value)) {
-            throw new Error(`Long value required ${field_name} ${value}`);
+        // long -> bigint
+        if (typeof value !== 'bigint') {
+            throw new Error(`BigInt value required ${field_name} ${value}`);
         }
         return value;
     },
@@ -104,7 +104,7 @@ var _my = {
         if (this.is_empty(value)) {
             return value;
         }
-        if (Long.isLong(value)) {
+        if (typeof value === 'bigint') {
             return value;
         }
 
@@ -118,7 +118,7 @@ var _my = {
             value = "" + value;
         }
         value = value.trim();
-        var long_value = Long.fromString(value, unsigned);
+        var long_value = BigInt(value, unsigned);
         if (long_value.toString() !== value) {
             throw new Error(`Unable to safely convert ${field_name} ${value} to long`);
         }
@@ -136,7 +136,7 @@ var _my = {
             this.no_overflow53(value, field_name);
             return "" + value;
         }
-        if (Long.isLong(value)) {
+        if (typeof value === 'bigint') {
             return value.toString();
         }
         throw `unsupported type ${field_name}: (${typeof value}) ${value}`;
@@ -288,7 +288,7 @@ var _my = {
             }
             return;
         }
-        if (Long.isLong(value)) {
+        if (typeof value === 'bigint') {
             // typeof value.toInt() is 'number'
             this.no_overflow53(value.toInt(), field_name);
             return;
@@ -299,7 +299,7 @@ var _my = {
     // signed / unsigned whole numbers only
     no_overflow64(value, field_name = "", unsigned = false) {
         // https://github.com/dcodeIO/Long.js/issues/20
-        if (Long.isLong(value)) {
+        if (typeof value === 'bigint') {
             return;
         }
 
@@ -323,7 +323,7 @@ var _my = {
             if (value === "") {
                 value = "0";
             }
-            var long_string = Long.fromString(value, unsigned).toString();
+            var long_string = BigInt(value, unsigned).toString();
             if (long_string !== value.trim()) {
                 throw new Error(`overflow ${field_name} ${value}`);
             }

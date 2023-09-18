@@ -1,8 +1,6 @@
-import {Long} from "bytebuffer";
-
 import v from "../../serializer/src/SerializerValidation";
 
-var DB_MAX_INSTANCE_ID = Long.fromNumber(Math.pow(2, 48) - 1);
+var DB_MAX_INSTANCE_ID = BigInt(Math.pow(2, 48) - 1);
 
 class ObjectId {
     constructor(space, type, instance) {
@@ -33,14 +31,14 @@ class ObjectId {
         return new ObjectId(
             parseInt(params[1]),
             parseInt(params[2]),
-            Long.fromString(params[3])
+            BigInt(params[3])
         );
     }
 
     static fromLong(long) {
-        var space = long.shiftRight(56).toInt();
-        var type = long.shiftRight(48).toInt() & 0x00ff;
-        var instance = long.and(DB_MAX_INSTANCE_ID);
+        const space = Number(long >> 56n);
+        const type = Number((long >> 48n) & 0x00ffn);
+        const instance = long & BigInt(Math.pow(2, 48) - 1);
         return new ObjectId(space, type, instance);
     }
 
@@ -48,14 +46,11 @@ class ObjectId {
         return ObjectId.fromLong(b.readUint64());
     }
 
-    toLong() {
-        return Long.fromNumber(this.space)
-            .shiftLeft(56)
-            .or(
-                Long.fromNumber(this.type)
-                    .shiftLeft(48)
-                    .or(this.instance)
-            );
+    static toLong() {
+        return BigInt(this.space)
+            << 56n
+            | (BigInt(this.type) << 48n)
+            | BigInt(this.instance);
     }
 
     appendByteBuffer(b) {

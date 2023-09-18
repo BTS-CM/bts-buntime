@@ -1,7 +1,6 @@
 var helper = {};
 
 import secureRandom from "secure-random";
-import {Long} from "bytebuffer";
 
 import {Signature} from "../../ecc";
 import {ops} from "../../serializer";
@@ -17,10 +16,10 @@ helper.unique_nonce_uint64 = function() {
             return ++helper.unique_nonce_entropy % 256;
         }
     })());
-    var long = Long.fromNumber(Date.now());
+    var long = BigInt(Date.now());
     //console.log('unique_nonce_uint64 date\t',ByteBuffer.allocate(8).writeUint64(long).toHex(0))
-    //console.log('unique_nonce_uint64 entropy\t',ByteBuffer.allocate(8).writeUint64(Long.fromNumber(entropy)).toHex(0))
-    long = long.shiftLeft(8).or(Long.fromNumber(entropy));
+    //console.log('unique_nonce_uint64 entropy\t',ByteBuffer.allocate(8).writeUint64(BigInt(entropy)).toHex(0))
+    long = long.shiftLeft(8).or(BigInt(entropy));
     //console.log('unique_nonce_uint64 shift8\t',ByteBuffer.allocate(8).writeUint64(long).toHex(0))
     return long.toString();
 };
