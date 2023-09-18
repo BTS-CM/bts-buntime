@@ -1,6 +1,6 @@
 {
   "name": "bts-buntime",
-  "module": "index.ts",
+  "module": "index.js",
   "type": "module",
   "devDependencies": {
     "bun-types": "latest"
