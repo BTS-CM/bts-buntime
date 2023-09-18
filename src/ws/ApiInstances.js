@@ -7,73 +7,11 @@ var autoReconnect = false; // by default don't use reconnecting-websocket
 var Apis = null;
 var statusCb = null;
 
-export const setRpcConnectionStatusCallback = callback => {
-  statusCb = callback;
-  if (Apis) Apis.setRpcConnectionStatusCallback(callback);
-};
-
-export const setAutoReconnect = auto => {
-  autoReconnect = auto;
-};
-
-export const reset = (
-  cs = "ws://localhost:8090",
-  connect,
-  connectTimeout = 4000,
-  optionalApis,
-  closeCb
-) => {
-  return close().then(() => {
-    Apis = newApis();
-    Apis.setRpcConnectionStatusCallback(statusCb);
-
-    if (Apis && connect)
-      Apis.connect(cs, connectTimeout, optionalApis, closeCb);
-
-    return Apis;
-  });
-};
-
-export const instance = (
-  cs = "ws://localhost:8090",
-  connect,
-  connectTimeout = 4000,
-  optionalApis,
-  closeCb
-) => {
-  if (!Apis) {
-    Apis = newApis();
-    Apis.setRpcConnectionStatusCallback(statusCb);
-  }
-
-  if (Apis && connect) {
-    Apis.connect(cs, connectTimeout, optionalApis);
-  }
-  if (closeCb) Apis.closeCb = closeCb;
-  return Apis;
-};
-
-export const chainId = () => {
-  return instance().chain_id;
-};
-
-export const close = async () => {
-  if (Apis) {
-    await Apis.close();
-    Apis = null;
-  }
-};
-
-const get = name =>
+const get = (name) => {
   new Proxy([], {
     get: (_, method) => (...args) => Apis[name].exec(method, [...args])
   });
-
-export const db = get("_db");
-export const network = get("_net");
-export const history = get("_hist");
-export const crypto = get("_crypt");
-export const orders = get("_orders");
+}
 
 const newApis = () => ({
   connect: (
@@ -178,3 +116,87 @@ const newApis = () => ({
   orders_api: () => Apis._orders,
   setRpcConnectionStatusCallback: callback => (Apis.statusCb = callback)
 });
+
+const setRpcConnectionStatusCallback = callback => {
+  statusCb = callback;
+  if (Apis) {
+    Apis.setRpcConnectionStatusCallback(callback)
+  };
+};
+
+const setAutoReconnect = auto => {
+  autoReconnect = auto;
+};
+
+const reset = (
+  cs = "ws://localhost:8090",
+  connect,
+  connectTimeout = 4000,
+  optionalApis,
+  closeCb
+) => {
+  return close().then(() => {
+    Apis = newApis();
+    Apis.setRpcConnectionStatusCallback(statusCb);
+
+    if (Apis && connect) {
+      Apis.connect(cs, connectTimeout, optionalApis, closeCb);
+    }
+
+    return Apis;
+  });
+};
+
+const instance = (
+  cs = "ws://localhost:8090",
+  connect,
+  connectTimeout = 4000,
+  optionalApis,
+  closeCb
+) => {
+  if (!Apis) {
+    Apis = newApis();
+    Apis.setRpcConnectionStatusCallback(statusCb);
+  }
+
+  if (Apis && connect) {
+    Apis.connect(cs, connectTimeout, optionalApis);
+  }
+
+  if (closeCb) {
+    Apis.closeCb = closeCb
+  };
+
+  return Apis;
+};
+
+const chainId = () => {
+  return instance().chain_id;
+};
+
+const close = async () => {
+  if (Apis) {
+    await Apis.close();
+    Apis = null;
+  }
+};
+
+const db = get("_db");
+const network = get("_net");
+const history = get("_hist");
+const crypto = get("_crypt");
+const orders = get("_orders");
+
+export {
+  setRpcConnectionStatusCallback,
+  setAutoReconnect,
+  reset,
+  instance,
+  chainId,
+  close,
+  db,
+  network,
+  history,
+  crypto,
+  orders,
+}
