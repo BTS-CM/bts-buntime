@@ -9,10 +9,10 @@ import SerializerValidation from "./src/serializer/src/SerializerValidation";
 export { Serializer, fp, types, ops, template, SerializerValidation };
 
 /* WSS */
-//import { Apis } from "./src/ws";
-//import { ChainConfig } from "./src/ws";
-import * as Apis from "./src/ws/ApiInstances";
-import ChainConfig from "./src/ws/ChainConfig";
+import { Apis } from "./src/ws";
+import { ChainConfig } from "./src/ws";
+//import * as Apis from "./src/ws/ApiInstances";
+//import ChainConfig from "./src/ws/ChainConfig";
 
 export { Apis, ChainConfig };
 
