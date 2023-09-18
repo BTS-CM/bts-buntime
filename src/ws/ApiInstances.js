@@ -7,11 +7,9 @@ var autoReconnect = false; // by default don't use reconnecting-websocket
 var Api = null;
 var statusCb = null;
 
-const get = (name) => {
-  return new Proxy([], {
-    get: (_, method) => (...args) => Api[name].exec(method, [...args])
-  });
-}
+const get = name => new Proxy([], {
+  get: (_, method) => (...args) => Api[name].exec(method, [...args])
+});
 
 const newApis = () => ({
   connect: (
@@ -39,7 +37,7 @@ const newApis = () => ({
       Api.ws_rpc.on_close = null;
       Api.ws_rpc.on_reconnect = null;
     }
-    
+
     console.log({ws_rpc_1: Api.ws_rpc});
 
     Api.ws_rpc = new ChainWebSocket(
