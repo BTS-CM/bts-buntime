@@ -10,9 +10,7 @@ export { Serializer, fp, types, ops, template, SerializerValidation };
 
 /* WSS */
 import Apis from "./src/ws/ApiInstances";
-import { ChainConfig } from "./src/ws";
-//import * as Apis from "./src/ws/ApiInstances";
-//import ChainConfig from "./src/ws/ChainConfig";
+import ChainConfig from "./src/ws/ChainConfig";
 
 export { Apis, ChainConfig };
 

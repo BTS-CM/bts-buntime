@@ -1,6 +1,6 @@
 import Immutable from "immutable";
-import {Apis} from "../../ws";
 import BigInteger from "bigi";
+import Apis from "../../ws/ApiInstances";
 
 import ChainTypes from "./ChainTypes";
 import ChainValidation from "./ChainValidation";

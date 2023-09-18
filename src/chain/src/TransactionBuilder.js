@@ -1,6 +1,8 @@
 import assert from "assert";
 
-import {Apis, ChainConfig} from "../../ws";
+import Apis from "../../ws/ApiInstances";
+import ChainConfig from "../../ws/ChainConfig";
+
 import {Signature, PublicKey, hash} from "../../ecc";
 import {ops} from "../../serializer";
 import ChainTypes from "./ChainTypes";

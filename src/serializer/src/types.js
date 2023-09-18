@@ -8,7 +8,7 @@ import ChainTypes from "../../chain/src/ChainTypes";
 import ObjectId from "../../chain/src/ObjectId";
 
 import {PublicKey, Address} from "../../ecc";
-import {ChainConfig} from "../../ws";
+import ChainConfig from "../../ws/ChainConfig";
 
 const Buffer = require("safe-buffer").Buffer;
 

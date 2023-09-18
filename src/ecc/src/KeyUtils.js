@@ -5,7 +5,7 @@ import PublicKey from "./PublicKey";
 import Address from "./address";
 import Aes from "./aes";
 import {sha256, sha512} from "./hash";
-import {ChainConfig} from "../../ws";
+import ChainConfig from "../../ws/ChainConfig";
 
 const Buffer = require("safe-buffer").Buffer;
 

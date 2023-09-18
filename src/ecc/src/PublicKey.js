@@ -5,7 +5,7 @@ import assert from "assert";
 import deepEqual from "deep-equal";
 
 import {sha256, sha512, ripemd160} from "./hash";
-import {ChainConfig} from "../../ws";
+import ChainConfig from "../../ws/ChainConfig";
 
 const Buffer = require("safe-buffer").Buffer;
 const secp256k1 = getCurveByName("secp256k1");

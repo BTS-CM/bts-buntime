@@ -5,7 +5,7 @@ import {Long} from "@exodus/bytebuffer";
 
 import {Signature} from "../../ecc";
 import {ops} from "../../serializer";
-import {Apis} from "../../ws";
+import Apis from "../../ws/ApiInstances";
 
 helper.unique_nonce_entropy = null;
 helper.unique_nonce_uint64 = function() {
