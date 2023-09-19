@@ -138,7 +138,7 @@ class ChainWebSocket {
     }
 
     for (var cbId = this.responseCbId + 1; cbId <= this.cbId; cbId += 1) {
-      this.callbacks[cbId].resolve("wss connection closed");
+      this.callbacks[cbId].reject("wss connection closed");
     }
 
     this.statusCb && this.statusCb("closed");
