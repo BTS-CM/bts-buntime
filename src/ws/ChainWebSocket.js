@@ -22,7 +22,7 @@ class ChainWebSocket {
 
     this.cbId = 0;
     this.responseCbId = 0;
-    this.cbs = {};
+    this.callbacks = {};
     this.subs = {};
     this.unsub = {};
 
@@ -138,7 +138,7 @@ class ChainWebSocket {
     }
 
     for (var cbId = this.responseCbId + 1; cbId <= this.cbId; cbId += 1) {
-      this.cbs[cbId].reject(new Error("connection closed"));
+      this.callbacks[cbId].resolve("wss connection closed");
     }
 
     this.statusCb && this.statusCb("closed");
@@ -212,7 +212,7 @@ class ChainWebSocket {
     this.send_life = MAX_SEND_LIFE;
 
     return new Promise((resolve, reject) => {
-      this.cbs[this.cbId] = {
+      this.callbacks[this.cbId] = {
         time: new Date(),
         resolve: resolve,
         reject: reject
@@ -238,7 +238,7 @@ class ChainWebSocket {
     }
 
     if (!sub) {
-      callback = this.cbs[response.id];
+      callback = this.callbacks[response.id];
       this.responseCbId = response.id;
     } else {
       callback = this.subs[response.id].callback;
@@ -250,7 +250,7 @@ class ChainWebSocket {
       } else {
         callback.resolve(response.result);
       }
-      delete this.cbs[response.id];
+      delete this.callbacks[response.id];
 
       if (this.unsub[response.id]) {
         delete this.subs[this.unsub[response.id]];

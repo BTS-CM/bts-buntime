@@ -3,21 +3,23 @@ import GrapheneApi from "./GrapheneApi";
 import ChainConfig from "./ChainConfig";
 
 var autoReconnect = false; // by default don't use reconnecting-websocket
-
 var Api = null;
-var statusCb = null;
+var callbackStatus = null;
 
 const get = name => new Proxy([], {
   get: (_, method) => (...args) => Api[name].exec(method, [...args])
 });
 
+/**
+ * Template for initializing a new API instance
+ */
 const newApis = () => ({
   connect: (
-    cs,
+    wssURL,
     connectTimeout,
     optionalApis = { enableCrypto: false, enableOrders: false }
   ) => {
-    Api.url = cs;
+    Api.url = wssURL;
     
     let rpc_user = "";
     let rpc_password = "";
@@ -26,23 +28,21 @@ const newApis = () => ({
       typeof window !== "undefined" &&
       window.location &&
       window.location.protocol === "https:" &&
-      cs.indexOf("wss://") < 0
+      wssURL.indexOf("wss://") < 0
     ) {
       throw new Error("Secure domains require wss connection");
     }
 
     if (Api.ws_rpc) {
-      Api.ws_rpc.statusCb = null;
+      Api.ws_rpc.callbackStatus = null;
       Api.ws_rpc.keepAliveCb = null;
       Api.ws_rpc.on_close = null;
       Api.ws_rpc.on_reconnect = null;
     }
 
-    console.log({ws_rpc_1: Api.ws_rpc});
-
     Api.ws_rpc = new ChainWebSocket(
-      cs,
-      Api.statusCb,
+      wssURL,
+      Api.callbackStatus,
       connectTimeout,
       autoReconnect,
       closed => {
@@ -51,8 +51,6 @@ const newApis = () => ({
         }
       }
     );
-
-    console.log({ws_rpc_2: Api.ws_rpc});
 
     Api.init_promise = Api.ws_rpc
       .login(rpc_user, rpc_password)
@@ -78,8 +76,8 @@ const newApis = () => ({
           }
           Api.ws_rpc.login("", "").then(() => {
             Api._db.init().then(() => {
-              if (Api.statusCb) {
-                Api.statusCb("reconnect");
+              if (Api.callbackStatus) {
+                Api.callbackStatus("reconnect");
               }
             });
             Api._net.init();
@@ -111,7 +109,7 @@ const newApis = () => ({
       })
       .catch(err => {
         console.error(
-          cs,
+          wssURL,
           "Failed to initialize with error",
           err && err.message
         );
@@ -132,11 +130,11 @@ const newApis = () => ({
   history_api: () => Api._hist,
   crypto_api: () => Api._crypt,
   orders_api: () => Api._orders,
-  setRpcConnectionStatusCallback: callback => (Api.statusCb = callback)
+  setRpcConnectionStatusCallback: callback => (Api.callbackStatus = callback)
 });
 
 const setRpcConnectionStatusCallback = callback => {
-  statusCb = callback;
+  callbackStatus = callback;
   if (Api) {
     Api.setRpcConnectionStatusCallback(callback)
   };
@@ -147,7 +145,7 @@ const setAutoReconnect = auto => {
 };
 
 const reset = (
-  cs = "ws://localhost:8090",
+  wssURL = "ws://localhost:8090",
   connect,
   connectTimeout = 4000,
   optionalApis,
@@ -155,10 +153,10 @@ const reset = (
 ) => {
   return close().then(() => {
     Api = newApis();
-    Api.setRpcConnectionStatusCallback(statusCb);
+    Api.setRpcConnectionStatusCallback(callbackStatus);
 
     if (Api && connect) {
-      Api.connect(cs, connectTimeout, optionalApis, closeCb);
+      Api.connect(wssURL, connectTimeout, optionalApis, closeCb);
     }
 
     return Api;
@@ -166,7 +164,7 @@ const reset = (
 };
 
 const instance = (
-  cs = "ws://localhost:8090",
+  wssURL = "ws://localhost:8090",
   connect,
   connectTimeout = 4000,
   optionalApis,
@@ -174,11 +172,11 @@ const instance = (
 ) => {
   if (!Api) {
     Api = newApis();
-    Api.setRpcConnectionStatusCallback(statusCb);
+    Api.setRpcConnectionStatusCallback(callbackStatus);
   }
 
   if (Api && connect) {
-    Api.connect(cs, connectTimeout, optionalApis);
+    Api.connect(wssURL, connectTimeout, optionalApis);
   }
 
   if (closeCb) {
