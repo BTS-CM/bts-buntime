@@ -152,20 +152,20 @@ class TransactionBuilder {
                     Apis.instance()
                         .db_api()
                         .exec("get_objects", [["2.1.0"]])
-                        .then(r => {
-                            head_block_time_string = r[0].time;
-                            if (this.expiration === 0)
-                                this.expiration =
-                                    base_expiration_sec() +
-                                    ChainConfig.expire_in_secs;
+                        .then((response) => {
+                            console.log({response});
+                            head_block_time_string = response[0].time;
+                            if (this.expiration === 0) {
+                                this.expiration = base_expiration_sec() + ChainConfig.expire_in_secs;
+                            }
+
                             if (
                                 this.ref_block_num === 0 &&
                                 this.ref_block_prefix === 0
                             ) {
-                                this.ref_block_num =
-                                    r[0].head_block_number & 0xffff;
+                                this.ref_block_num = response[0].head_block_number & 0xffff;
                                 this.ref_block_prefix = Buffer.from(
-                                    r[0].head_block_id,
+                                    response[0].head_block_id,
                                     "hex"
                                 ).readUInt32LE(4);
                             }
