@@ -268,9 +268,7 @@ class ChainWebSocket {
    * @param {String} user 
    * @param {String} password 
    */
-  login = (user, password) => {
-    this.connect_promise.then(() => this.call([1, "login", [user, password]]));
-  }
+  login = (user, password) => this.connect_promise.then(() => this.call([1, "login", [user, password]]));
 
   /**
    * Manually closing the WSS connection
