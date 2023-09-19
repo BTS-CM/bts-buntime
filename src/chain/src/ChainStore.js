@@ -1,4 +1,4 @@
-import Immutable from "immutable";
+import {Map as imMap, List, fromJS, Set as imSet} from "immutable";
 import BigInteger from "bigi";
 import Apis from "../../ws/ApiInstances";
 
@@ -78,8 +78,8 @@ class ChainStore {
         this.objects_by_id = new Map();
         this.accounts_by_name = new Map();
         this.assets_by_symbol = new Map();
-        this.account_ids_by_key = Immutable.Map();
-        this.account_ids_by_account = Immutable.Map();
+        this.account_ids_by_key = imMap();
+        this.account_ids_by_account = imMap();
 
         this.balance_objects_by_address = new Map();
         this.get_account_refs_of_keys_calls = new Set();
@@ -293,7 +293,7 @@ class ChainStore {
                                 if (current) {
                                     let proposals = current.get(
                                         "proposals",
-                                        Immutable.Set()
+                                        imSet()
                                     );
 
                                     if (proposals.includes(obj)) {
@@ -496,7 +496,7 @@ class ChainStore {
                 .db_api()
                 .exec("get_key_references", [[key]])
                 .then(vec_account_id => {
-                    let refs = Immutable.Set();
+                    let refs = imSet();
                     vec_account_id = vec_account_id[0];
                     refs = refs.withMutations(r => {
                         for (let i = 0; i < vec_account_id.length; ++i) {
@@ -542,7 +542,7 @@ class ChainStore {
                 .db_api()
                 .exec("get_account_references", [account_id])
                 .then(vec_account_id => {
-                    let refs = Immutable.Set();
+                    let refs = imSet();
                     refs = refs.withMutations(r => {
                         for (let i = 0; i < vec_account_id.length; ++i) {
                             r.add(vec_account_id[i]);
@@ -580,7 +580,7 @@ class ChainStore {
             /** because balance objects are simply part of the genesis state, there is no need to worry about
              * having to update them / merge them or index them in updateObject.
              */
-            this.balance_objects_by_address.set(address, Immutable.Set());
+            this.balance_objects_by_address.set(address, imSet());
             Apis.instance()
                 .db_api()
                 .exec("get_balance_objects", [[address]])
@@ -593,7 +593,7 @@ class ChainStore {
                         }
                         this.balance_objects_by_address.set(
                             address,
-                            Immutable.Set(set)
+                            imSet(set)
                         );
                         this.notifySubscribers();
                     },
@@ -1004,20 +1004,20 @@ class ChainStore {
                     }
 
                     this.accounts_by_name.set(account.name, account.id);
-                    account.assets = new Immutable.List(assets || []);
+                    account.assets = new List(assets || []);
                     account.referrer_name = referrer_name;
                     account.lifetime_referrer_name = lifetime_referrer_name;
                     account.registrar_name = registrar_name;
                     account.balances = {};
                     account.more_data_available = more_data_available;
-                    account.orders = new Immutable.Set();
-                    account.vesting_balances = new Immutable.Set();
-                    account.balances = new Immutable.Map();
-                    account.call_orders = new Immutable.Set();
-                    account.settle_orders = new Immutable.Set();
-                    account.proposals = new Immutable.Set();
-                    account.htlcs_to = new Immutable.Set();
-                    account.htlcs_from = new Immutable.Set();
+                    account.orders = new imSet();
+                    account.vesting_balances = new imSet();
+                    account.balances = new imMap();
+                    account.call_orders = new imSet();
+                    account.settle_orders = new imSet();
+                    account.proposals = new imSet();
+                    account.htlcs_to = new imSet();
+                    account.htlcs_from = new imSet();
                     account.vesting_balances = account.vesting_balances.withMutations(
                         set => {
                             vesting_balances.forEach(vb => {
@@ -1200,8 +1200,8 @@ class ChainStore {
                     let current_account = this.objects_by_id.get(account_id);
                     if (!current_account) return;
                     let current_history = current_account.get("history");
-                    if (!current_history) current_history = Immutable.List();
-                    let updated_history = Immutable.fromJS(operations);
+                    if (!current_history) current_history = List();
+                    let updated_history = fromJS(operations);
                     updated_history = updated_history.withMutations(list => {
                         for (let i = 0; i < current_history.size; ++i)
                             list.push(current_history.get(i));
@@ -1331,7 +1331,7 @@ class ChainStore {
         let current = this.objects_by_id.get(object.id);
         if (!current) {
             // console.log("add object:", object.id);
-            current = Immutable.Map();
+            current = imMap();
         }
         let prior = current;
 
@@ -1339,7 +1339,7 @@ class ChainStore {
         if (current === undefined || current === true)
             this.objects_by_id.set(
                 object.id,
-                (current = Immutable.fromJS(object))
+                (current = fromJS(object))
             );
         else {
             /* Existing object */ switch (objectType) {
@@ -1350,14 +1350,14 @@ class ChainStore {
                 case "account":
                     this.objects_by_id.set(
                         object.id,
-                        (current = current.mergeDeep(Immutable.fromJS(object)))
+                        (current = current.mergeDeep(fromJS(object)))
                     );
                     break;
                 case "asset":
                 case "asset_bitasset_data":
                     this.objects_by_id.set(
                         object.id,
-                        (current = current.merge(Immutable.fromJS(object)))
+                        (current = current.merge(fromJS(object)))
                     );
                     break;
 
@@ -1365,7 +1365,7 @@ class ChainStore {
                 default:
                     this.objects_by_id.set(
                         object.id,
-                        (current = Immutable.fromJS(object))
+                        (current = fromJS(object))
                     );
             }
         }
@@ -1382,7 +1382,7 @@ class ChainStore {
                 } else {
                     let balances = owner.get("balances");
                     if (!balances)
-                        owner = owner.set("balances", Immutable.Map());
+                        owner = owner.set("balances", imMap());
                     owner = owner.setIn(
                         ["balances", object.asset_type],
                         object.id
@@ -1440,28 +1440,28 @@ class ChainStore {
             case "account":
                 current = current.set(
                     "active",
-                    Immutable.fromJS(object.active)
+                    fromJS(object.active)
                 );
-                current = current.set("owner", Immutable.fromJS(object.owner));
+                current = current.set("owner", fromJS(object.owner));
                 current = current.set(
                     "options",
-                    Immutable.fromJS(object.options)
+                    fromJS(object.options)
                 );
                 current = current.set(
                     "whitelisting_accounts",
-                    Immutable.fromJS(object.whitelisting_accounts)
+                    fromJS(object.whitelisting_accounts)
                 );
                 current = current.set(
                     "blacklisting_accounts",
-                    Immutable.fromJS(object.blacklisting_accounts)
+                    fromJS(object.blacklisting_accounts)
                 );
                 current = current.set(
                     "whitelisted_accounts",
-                    Immutable.fromJS(object.whitelisted_accounts)
+                    fromJS(object.whitelisted_accounts)
                 );
                 current = current.set(
                     "blacklisted_accounts",
-                    Immutable.fromJS(object.blacklisted_accounts)
+                    fromJS(object.blacklisted_accounts)
                 );
                 this.objects_by_id.set(object.id, current);
                 this.accounts_by_name.set(object.name, object.id);
@@ -1475,7 +1475,7 @@ class ChainStore {
                 let bitasset = current.get("bitasset");
                 if (!bitasset && "bitasset_data_id" in object) {
                     let bad = this.getObject(object.bitasset_data_id, true);
-                    if (!bad) bad = Immutable.Map();
+                    if (!bad) bad = imMap();
 
                     if (!bad.get("asset_id")) {
                         bad = bad.set("asset_id", object.id);
@@ -1509,7 +1509,7 @@ class ChainStore {
                     if (!call_account.has("call_orders"))
                         call_account = call_account.set(
                             "call_orders",
-                            new Immutable.Set()
+                            new imSet()
                         );
                     let call_orders = call_account.get("call_orders");
                     if (!call_orders.has(object.id)) {
@@ -1534,7 +1534,7 @@ class ChainStore {
                     if (!limit_account.has("orders"))
                         limit_account = limit_account.set(
                             "orders",
-                            new Immutable.Set()
+                            new imSet()
                         );
                     let limit_orders = limit_account.get("orders");
                     if (!limit_orders.has(object.id)) {
@@ -1640,7 +1640,7 @@ class ChainStore {
         if (this.chain_time_offset.length === 0) return 0;
         // Immutable is fast, sorts numbers correctly, and leaves the original unmodified
         // This will fix itself if the user changes their clock
-        var median_offset = Immutable.List(this.chain_time_offset)
+        var median_offset = List(this.chain_time_offset)
             .sort()
             .get(Math.floor((this.chain_time_offset.length - 1) / 2));
         // console.log("median_offset", median_offset)
@@ -1655,7 +1655,7 @@ class ChainStore {
                 didImpact = true;
                 let proposals = impactedAccount.get(
                     "proposals",
-                    Immutable.Set()
+                    imSet()
                 );
 
                 if (!proposals.includes(objectId)) {
@@ -1730,9 +1730,9 @@ class ChainStore {
                             pool.dynamic_share_asset = this.getObject(pool.share_asset.get('dynamic_asset_data_id'));
                             tmp.push(pool);
                         });
-                        return Immutable.fromJS(tmp);
+                        return fromJS(tmp);
                     }
-                    return Immutable.fromJS([]);
+                    return fromJS([]);
                 }
             )
             .catch(error => {
@@ -1761,9 +1761,9 @@ class ChainStore {
                             pool.dynamic_share_asset = this.getObject(pool.share_asset.get('dynamic_asset_data_id'));
                             tmp.push(pool);
                         });
-                        return Immutable.fromJS(tmp);
+                        return fromJS(tmp);
                     }
-                    return Immutable.fromJS([]);
+                    return fromJS([]);
                 }
             )
             .catch(error => {
@@ -1824,7 +1824,7 @@ function FetchChain(methodName, objectIds, timeout = 3000, subMap = {}) {
     if (!arrayIn) objectIds = [objectIds];
 
     return chain_store
-        .FetchChainObjects(method, Immutable.List(objectIds), timeout, subMap)
+        .FetchChainObjects(method, List(objectIds), timeout, subMap)
         .then(res => (arrayIn ? res : res.get(0)));
 }
 
