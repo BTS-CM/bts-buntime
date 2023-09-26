@@ -3,12 +3,39 @@ const MAX_SEND_LIFE = 5;
 const MAX_RECV_LIFE = MAX_SEND_LIFE * 2;
 
 class ChainWebSocket {
+  private url: string;
+  private statusCb: (status: string) => void;
+  private current_reject: ((reason?: any) => void) | null;
+  private current_resolve: (() => void) | null = null; // Initialize to null
+  private on_close: (() => void) | null = null; // Initialize to null
+  private ws: WebSocket | null = null; // Initialize to null
+  private connectionTimeout: any; // Initialize to null
+  private keepalive_timer: ReturnType<typeof setInterval> | undefined;
+  private on_reconnect: (() => void) | null;
+  private closed: boolean;
+  private send_life: number;
+  private recv_life: number;
+  private keepAliveCb: ((closed: boolean) => void) | null;
+  private cbId: number;
+  private responseCbId: number;
+  private subs: { [key: string]: { callback: (data: any) => void } };
+  private unsub: { [key: string]: string };
+  private _closeCb: (() => void) | null = null; // Initialize to null
+  private connect_promise: Promise<void>;
+  private callbacks: {
+    [key: number]: ((data: any) => void) | {
+      time: Date;
+      resolve?: (value?: any) => void;
+      reject?: (reason?: any) => void;
+    };
+  } = {};
+
   constructor(
-    ws_server,
-    statusCb,
-    connectTimeout = 5000,
-    autoReconnect = true,
-    keepAliveCb = null
+    ws_server: string,
+    statusCb: (status: string) => void,
+    connectTimeout: number = 5000,
+    autoReconnect: boolean = true,
+    keepAliveCb: ((closed: boolean) => void) | null = null
   ) {
     this.url = ws_server;
     this.statusCb = statusCb;
@@ -35,7 +62,7 @@ class ChainWebSocket {
    * @param {Number} connectTimeout 
    * @returns 
    */
-  connect = (server, connectTimeout) =>
+  private connect = (server: string, connectTimeout: number): Promise<void> =>
     new Promise((resolve, reject) => {
       this.current_reject = reject;
       this.current_resolve = resolve;
@@ -43,13 +70,15 @@ class ChainWebSocket {
       try {
         this.ws = new WebSocket(server);
       } catch (error) {
-        this.ws = { readyState: 3, close: () => {} }; // DISCONNECTED
-        reject(new Error("Invalid url", server, " closed"));
+        this.ws = null;
+        console.log({ error, server });
+        reject(`Failed to connect to ${server}`);
+        return;
       }
 
       this.ws.addEventListener("open", () => this.onOpen());
-      this.ws.addEventListener("error", event => this.onError(event));
-      this.ws.addEventListener("message", event => this.onMessage(event));
+      this.ws.addEventListener("error", (event: any) => this.onError(event));
+      this.ws.addEventListener("message", (event: any) => this.onMessage(event));
       this.ws.addEventListener("close", () => this.onClose());
 
       this.connectionTimeout = setTimeout(() => {
@@ -70,7 +99,7 @@ class ChainWebSocket {
   /**
    * Called when the WSS connection is initialized
    */
-  onOpen = () => {
+  private onOpen = () => {
     clearTimeout(this.connectionTimeout);
     if (this.statusCb) {
       this.statusCb("open")
@@ -94,14 +123,16 @@ class ChainWebSocket {
       }
     }, 5000);
     this.current_reject = null;
-    this.current_resolve();
+    if (this.current_resolve) {
+      this.current_resolve();
+    }
   };
 
   /**
    * Called when an error is encounrtered with the WSS connection
    * @param {Error} error 
    */
-  onError = error => {
+  private onError = (error: Error) => {
     if (this.keepalive_timer) {
       clearInterval(this.keepalive_timer);
       this.keepalive_timer = undefined;
@@ -122,7 +153,7 @@ class ChainWebSocket {
    * Called when the WSS connection gets data back from a request
    * @param {String} message 
    */
-  onMessage = message => {
+  private onMessage = (message: MessageEvent) => {
     this.recv_life = MAX_RECV_LIFE;
     this.listener(JSON.parse(message.data));
   };
@@ -130,7 +161,7 @@ class ChainWebSocket {
   /**
    * Called when the WSS connection closes
    */
-  onClose = () => {
+  private onClose = () => {
     this.closed = true;
     if (this.keepalive_timer) {
       clearInterval(this.keepalive_timer);
@@ -138,7 +169,12 @@ class ChainWebSocket {
     }
 
     for (var cbId = this.responseCbId + 1; cbId <= this.cbId; cbId += 1) {
-      this.callbacks[cbId].reject("wss connection closed");
+      if (typeof this.callbacks[cbId] === 'object' && this.callbacks[cbId] !== null) {
+        const callbackObj = this.callbacks[cbId] as { time: Date; resolve?: (value?: any) => void; reject?: (reason?: any) => void };
+        if (callbackObj.reject) {
+          callbackObj.reject('wss connection closed');
+        }
+      }
     }
 
     this.statusCb && this.statusCb("closed");
@@ -151,8 +187,8 @@ class ChainWebSocket {
    * @param {Array} params 
    * @returns {Promise}
    */
-  call = params => {
-    if (this.ws.readyState !== 1) {
+  public call = (params: any[]): Promise<any> => {
+    if (this.ws && this.ws.readyState !== 1) {
       return Promise.reject(
         new Error("websocket state error:" + this.ws.readyState)
       );
@@ -204,11 +240,6 @@ class ChainWebSocket {
       }
     }
 
-    var request = {
-      method: "call",
-      params: params
-    };
-    request.id = this.cbId;
     this.send_life = MAX_SEND_LIFE;
 
     return new Promise((resolve, reject) => {
@@ -217,11 +248,20 @@ class ChainWebSocket {
         resolve: resolve,
         reject: reject
       };
-      this.ws.send(JSON.stringify(request));
+
+      if (this.ws) {
+        this.ws.send(
+          JSON.stringify({
+            method: "call",
+            params: params,
+            id: this.cbId
+          })
+        );
+      }
     });
   };
 
-  listener = response => {
+  private listener = (response: any) => {
     if (SOCKET_DEBUG) {
       console.log(
         "[ChainWebSocket] <---- reply ----<",
@@ -238,28 +278,31 @@ class ChainWebSocket {
     }
 
     if (!sub) {
-      callback = this.callbacks[response.id];
-      this.responseCbId = response.id;
+      const callbackObj = this.callbacks[response.id];
+      if (callbackObj) {
+        if (response.error) {
+          if (typeof callbackObj === "object" && callbackObj.reject) {
+            callbackObj.reject(response.error);
+          }
+        } else {
+          if (typeof callbackObj === "object" && callbackObj.resolve) {
+            callbackObj.resolve(response.result);
+          }
+        }
+        delete this.callbacks[response.id];
+    
+        if (this.unsub[response.id]) {
+          delete this.subs[this.unsub[response.id]];
+          delete this.unsub[response.id];
+        }
+      }
     } else {
-      callback = this.subs[response.id].callback;
-    }
-
-    if (callback && !sub) {
-      if (response.error) {
-        callback.reject(response.error);
+      const subObj = this.subs[response.id];
+      if (subObj && typeof subObj.callback === "function") {
+        subObj.callback(response.params[1]);
       } else {
-        callback.resolve(response.result);
+        console.log("Warning: callback is not a function");
       }
-      delete this.callbacks[response.id];
-
-      if (this.unsub[response.id]) {
-        delete this.subs[this.unsub[response.id]];
-        delete this.unsub[response.id];
-      }
-    } else if (callback && sub) {
-      callback(response.params[1]);
-    } else {
-      console.log("Warning: unknown websocket response: ", response);
     }
   };
 
@@ -268,25 +311,26 @@ class ChainWebSocket {
    * @param {String} user 
    * @param {String} password 
    */
-  login = (user, password) => this.connect_promise.then(() => this.call([1, "login", [user, password]]));
+  login = (user: string, password: string) => this.connect_promise.then(() => this.call([1, "login", [user, password]]));
 
   /**
    * Manually closing the WSS connection
-   * @returns {Promise}
    */
-  close = () =>
-    new Promise(res => {
-      clearInterval(this.keepalive_timer);
-      this.keepalive_timer = undefined;
+  close = (): Promise<void> =>
+    new Promise<void>((resolve) => {
+      if (this.keepalive_timer) {
+        clearInterval(this.keepalive_timer);
+        this.keepalive_timer = undefined;
+      }
 
       this._closeCb = () => {
-        res();
+        resolve();
         this._closeCb = null;
       };
 
       if (!this.ws) {
         console.log("Websocket already cleared", this);
-        return res();
+        return resolve();
       }
 
       if (this.ws.terminate) {
@@ -296,7 +340,7 @@ class ChainWebSocket {
       }
 
       if (this.ws.readyState === 3) {
-        res();
+        resolve();
       }
     });
 }

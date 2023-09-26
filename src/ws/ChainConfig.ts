@@ -18,9 +18,10 @@ var config = {
         "39f5e2ede1f8bc1a3a54a7914414e3779e33193f1f5693510e73cb7a87617447"
     },
   },
+  network_name: "",
 
   /** Set a few properties for known chain IDs. */
-  setChainId: chain_id => {
+  setChainId: (chain_id: string) => {
     let result = Object.entries(config.networks).find(
       ([network_name, network]) => {
         if (network.chain_id === chain_id) {
@@ -36,6 +37,7 @@ var config = {
 
     if (result) return { network_name: result[0], network: result[1] };
     else console.log("Unknown chain id (this may be a testnet)", chain_id);
+
   },
 
   reset: () => {
