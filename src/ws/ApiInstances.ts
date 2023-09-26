@@ -39,8 +39,8 @@ const newApis = () => ({
       enableCrypto?: boolean,
       enableOrders?: boolean 
     } = {
-      enableDatabase: true,
-      enableHistory: true,
+      enableDatabase: false,
+      enableHistory: false,
       enableNetworkBroadcast: false,
       enableCrypto: false,
       enableOrders: false
@@ -72,24 +72,28 @@ const newApis = () => ({
       .login("", "")
       .then(() => {
         if (optionalApis.enableDatabase) {
+          // https://dev.bitshares.works/en/latest/api/blockchain_api/database.html
           Api._db = new GrapheneApi(Api.ws_rpc, "database");
         }
         if (optionalApis.enableHistory) {
+          // https://dev.bitshares.works/en/latest/api/blockchain_api/history.html
           Api._hist = new GrapheneApi(Api.ws_rpc, "history");
         }
         if (optionalApis.enableNetworkBroadcast) {
-          // beet api doesn't need the broadcast api
+          // https://dev.bitshares.works/en/latest/api/blockchain_api/network_broadcast.html
           Api._net = new GrapheneApi(Api.ws_rpc, "network_broadcast");
         }
         if (optionalApis.enableOrders) {
+          // https://dev.bitshares.works/en/latest/api/blockchain_api/new_other.html#orders-api
           Api._orders = new GrapheneApi(Api.ws_rpc, "orders");
         }
         if (optionalApis.enableCrypto) {
+          // https://dev.bitshares.works/en/latest/api/blockchain_api/crypto.html
           Api._crypt = new GrapheneApi(Api.ws_rpc, "crypto");
         }
         
         Api.ws_rpc.on_reconnect = () => {
-          if (!Api.ws_rpc) {
+          if (!Api || !Api.ws_rpc) {
             return;
           }
           Api.ws_rpc
@@ -181,6 +185,9 @@ const newApis = () => ({
     Api.ws_rpc = null;
   },
   db_api: () => {
+    if (!Api) {
+      throw new Error("Api not initialized");
+    }
     if (Api._db) {
       return Api._db;
     } else {
@@ -188,6 +195,9 @@ const newApis = () => ({
     }
   },
   network_api: () => {
+    if (!Api) {
+      throw new Error("Api not initialized");
+    }
     if (Api._net) {
       return Api._net;
     } else {
@@ -195,6 +205,9 @@ const newApis = () => ({
     }
   },
   history_api: () => {
+    if (!Api) {
+      throw new Error("Api not initialized");
+    }
     if (Api._hist) {
       return Api._hist;
     } else {
@@ -202,6 +215,9 @@ const newApis = () => ({
     }
   },
   crypto_api: () => {
+    if (!Api) {
+      throw new Error("Api not initialized");
+    }
     if (Api._crypt) {
       return Api._crypt;
     } else {
@@ -209,6 +225,9 @@ const newApis = () => ({
     }
   },
   orders_api: () => {
+    if (!Api) {
+      throw new Error("Api not initialized");
+    }
     if (Api._orders) {
       return Api._orders;
     } else {
@@ -240,8 +259,8 @@ const reset = (
     enableCrypto?: boolean,
     enableOrders?: boolean 
   } = {
-    enableDatabase: true,
-    enableHistory: true,
+    enableDatabase: false,
+    enableHistory: false,
     enableNetworkBroadcast: false,
     enableCrypto: false,
     enableOrders: false
@@ -271,8 +290,8 @@ const instance = (
     enableCrypto?: boolean,
     enableOrders?: boolean 
   } = {
-    enableDatabase: true,
-    enableHistory: true,
+    enableDatabase: false,
+    enableHistory: false,
     enableNetworkBroadcast: false,
     enableCrypto: false,
     enableOrders: false
