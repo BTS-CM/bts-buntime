@@ -2,52 +2,83 @@ import ChainWebSocket from "./ChainWebSocket";
 import GrapheneApi from "./GrapheneApi";
 import ChainConfig from "./ChainConfig";
 
-let autoReconnect = false; // by default don't use reconnecting-websocket
-let Api: any = null;
-let callbackStatus: any = null;
+type OptionalApis = {
+  enableDatabase?: boolean;
+  enableHistory?: boolean;
+  enableNetworkBroadcast?: boolean;
+  enableCrypto?: boolean;
+  enableOrders?: boolean;
+};
 
-const get = (name: string) => new Proxy([], {
-  get: (_, method) => (...args: any[]) => {
-    if (!Api) {
-      throw new Error("Api not initialized");
-    }
-    if (!Api[name]) {
-      console.error(`API ${name} does not exist`);
-      return null;
-    }
-    return Api[name].exec(method, [...args]);
-  }
-});
+type CallbackStatus = (status: string) => void;
 
-const keepAliveFunction = (closed: any) => {
-  if (Api._db && !closed) {
-    Api._db.exec("get_objects", [["2.1.0"]]).catch((e: any) => {});
-  }
-}
+type ApiObject = {
+  url: string;
+  ws_rpc?: ChainWebSocket;
+  _db?: GrapheneApi;
+  _hist?: GrapheneApi;
+  _net?: GrapheneApi;
+  _orders?: GrapheneApi;
+  _crypt?: GrapheneApi;
+  init_promise?: Promise<any>;
+  chain_id?: string;
+  closeCb?: any;
+};
+
+type ApiInstance = {
+  connect: (
+    wssURL: string,
+    connectTimeout: number,
+    optionalApis: OptionalApis
+  ) => void;
+  close: () => Promise<void>;
+  db_api: () => GrapheneApi;
+  network_api: () => GrapheneApi;
+  history_api: () => GrapheneApi;
+  crypto_api: () => GrapheneApi;
+  orders_api: () => GrapheneApi;
+  get: (name: string) => any;
+  setRpcConnectionStatusCallback: (callback: CallbackStatus) => void;
+  setAutoReconnect: (auto: boolean) => void;
+  chainId: () => string | Error;
+};
 
 /**
  * Template for initializing a new API instance
  */
-const newApis = () => ({
-  connect: (
+const newApis = (): ApiInstance => {
+  let Api: ApiObject = {};
+  let autoReconnect = false;
+  let callbackStatus: CallbackStatus | null = null;
+
+  const close = async () => {
+    if (
+      Api &&
+      Api.ws_rpc &&
+      Api.ws_rpc.ws && 
+      Api.ws_rpc.ws.readyState === 1
+    ) {
+      await Api.ws_rpc.close();
+    }
+    Api = {}
+    autoReconnect = false
+    callbackStatus = null
+  }
+
+  const connect = (
     wssURL: string,
     connectTimeout: number,
-    optionalApis: {
-      enableDatabase?: boolean,
-      enableHistory?: boolean,
-      enableNetworkBroadcast?: boolean,
-      enableCrypto?: boolean,
-      enableOrders?: boolean 
-    } = {
-      enableDatabase: false,
-      enableHistory: false,
-      enableNetworkBroadcast: false,
-      enableCrypto: false,
-      enableOrders: false
-    }
+    optionalApis: OptionalApis
   ) => {
 
-    if (!Object.keys(optionalApis).length) {
+    if (!wssURL || !wssURL.length) {
+      throw new Error("Websocket URL not set");
+    }
+
+    const hasOptApis = optionalApis ? Object.keys(optionalApis).length > 0 : false;
+    const hasTrueApis = hasOptApis ? Object.values(optionalApis).some(val => val === true) : false;
+    
+    if (!hasTrueApis) {
       // At least one optional Api is required
       throw new Error("Please configure at least one API");
     }
@@ -65,14 +96,16 @@ const newApis = () => ({
       Api.callbackStatus,
       connectTimeout,
       autoReconnect,
-      keepAliveFunction
+      (closed: any) => 
+        Api._db &&
+        !closed &&
+        Api._db.exec("get_objects", [["2.1.0"]]).catch((e: any) => {}) // keepalive function
     );
-    
 
-    Api.init_promise = Api.ws_rpc
+    if (Api.ws_rpc) {
+      Api.init_promise = Api.ws_rpc
       .login("", "")
       .then(() => {
-        console.log({ optionalApis })
         if (optionalApis.enableDatabase) {
           // https://dev.bitshares.works/en/latest/api/blockchain_api/database.html
           Api._db = new GrapheneApi(Api.ws_rpc, "database");
@@ -101,23 +134,23 @@ const newApis = () => ({
           Api.ws_rpc
             .login("", "")
             .then(() => {
-              if (optionalApis.enableDatabase) {
+              if (optionalApis.enableDatabase && Api._db) {
                 Api._db.init().then(() => {
                   if (Api.callbackStatus) {
                     Api.callbackStatus("reconnect");
                   }
                 });
               }
-              if (optionalApis.enableHistory) {
+              if (optionalApis.enableHistory && Api._hist) {
                 Api._hist.init();
               }
-              if (optionalApis.enableNetworkBroadcast) {
+              if (optionalApis.enableNetworkBroadcast && Api._net) {
                 Api._net.init();
               }
-              if (optionalApis.enableOrders) {
+              if (optionalApis.enableOrders && Api._orders) {
                 Api._orders.init();
               }
-              if (optionalApis.enableCrypto) {
+              if (optionalApis.enableCrypto && Api._crypt) {
                 Api._crypt.init();
               }
             });
@@ -125,7 +158,7 @@ const newApis = () => ({
 
         Api.ws_rpc.on_close = () => {
           if (Api) {
-            Api.close().then(() => {
+            close().then(() => {
               if (Api.closeCb) {
                 Api.closeCb();
               }
@@ -135,7 +168,7 @@ const newApis = () => ({
 
         const initPromises = [];
 
-        if (optionalApis.enableDatabase) {
+        if (optionalApis.enableDatabase && Api._db) {
           const db_promise = Api._db.init().then(() => {
             return Api._db.exec("get_chain_id", []).then((_chain_id: string) => {
               Api.chain_id = _chain_id;
@@ -145,19 +178,19 @@ const newApis = () => ({
           initPromises.push(db_promise);
         }
 
-        if (optionalApis.enableNetworkBroadcast) {
+        if (optionalApis.enableNetworkBroadcast && Api._net) {
           initPromises.push(Api._net.init());
         }
 
-        if (optionalApis.enableHistory) {
+        if (optionalApis.enableHistory && Api._hist) {
           initPromises.push(Api._hist.init());
         }
 
-        if (optionalApis.enableOrders) {
+        if (optionalApis.enableOrders && Api._orders) {
           initPromises.push(Api._orders.init());
         }
 
-        if (optionalApis.enableCrypto) {
+        if (optionalApis.enableCrypto && Api._crypt) {
           initPromises.push(Api._crypt.init());
         }
 
@@ -170,23 +203,16 @@ const newApis = () => ({
           err
         });
         if (Api) {
-          Api.close();
-          Api = null;
+          close();
+          Api = {};
         }
       });
-  },
-  close: async () => {
-    if (
-      Api &&
-      Api.ws_rpc &&
-      Api.ws_rpc.ws && 
-      Api.ws_rpc.ws.readyState === 1
-    ) {
-      await Api.ws_rpc.close();
     }
-    Api.ws_rpc = null;
-  },
-  db_api: () => {
+
+
+  }
+ 
+  const db_api = () => {
     if (!Api) {
       throw new Error("Api not initialized");
     }
@@ -195,8 +221,9 @@ const newApis = () => ({
     } else {
       throw new Error("Database API disabled by instance config");
     }
-  },
-  network_api: () => {
+  }
+
+  const network_api = () => {
     if (!Api) {
       throw new Error("Api not initialized");
     }
@@ -205,8 +232,9 @@ const newApis = () => ({
     } else {
       throw new Error("Network API disabled by instance config");
     }
-  },
-  history_api: () => {
+  }
+
+  const history_api = () => {
     if (!Api) {
       throw new Error("Api not initialized");
     }
@@ -215,8 +243,9 @@ const newApis = () => ({
     } else {
       throw new Error("History API disabled by instance config");
     }
-  },
-  crypto_api: () => {
+  }
+
+  const crypto_api = () => {
     if (!Api) {
       throw new Error("Api not initialized");
     }
@@ -225,8 +254,9 @@ const newApis = () => ({
     } else {
       throw new Error("Crypto API disabled by instance config");
     }
-  },
-  orders_api: () => {
+  }
+
+  const orders_api = () => {
     if (!Api) {
       throw new Error("Api not initialized");
     }
@@ -235,32 +265,71 @@ const newApis = () => ({
     } else {
       throw new Error("Orders API disabled by instance config");
     }
-  },
-  setRpcConnectionStatusCallback: (callback: any) => (Api.callbackStatus = callback)
-});
+  }
 
-const setRpcConnectionStatusCallback = (callback: any) => {
-  callbackStatus = callback;
-  if (Api) {
-    Api.setRpcConnectionStatusCallback(callback)
+  const get = (name: string) => new Proxy([], {
+    // get("_db")
+    get: (_, method) => (...args: any[]) => {
+      if (!Api) {
+        throw new Error("Api not initialized");
+      }
+      if (!Api[name as keyof ApiObject]) {
+        console.error(`API ${name} does not exist`);
+        return null;
+      }
+      return Api[name as keyof ApiObject].exec(method, [...args]);
+    }
+  })
+
+  const setRpcConnectionStatusCallback = (callback: any) => (callbackStatus = callback)
+
+  const setAutoReconnect = (auto: boolean) => {
+    autoReconnect = auto;
+  }
+
+  const chainId = () => {
+    if (Api) {
+      if (Api.chain_id) {
+        return Api.chain_id;
+      } else {
+        throw new Error("Chain ID not found");
+      }
+    } else {
+      throw new Error("Api not initialized");
+    }
+  }
+
+  return {
+    connect,
+    close,
+    db_api,
+    network_api,
+    history_api,
+    crypto_api,
+    orders_api,
+    get,
+    setRpcConnectionStatusCallback,
+    setAutoReconnect,
+    chainId,
   };
-};
+}
 
-const setAutoReconnect = (auto: boolean) => {
-  autoReconnect = auto;
-};
-
+/**
+ * Close the previous API & initialize a new one
+ * @param oldApi The previous api connection
+ * @param wssURL The new wss url
+ * @param connect 
+ * @param connectTimeout 
+ * @param optionalApis 
+ * @param closeCb 
+ * @returns ApiInstance
+ */
 const reset = (
-  wssURL = "ws://localhost:8090",
+  oldApi: any = { close: () => {} },
+  wssURL: string = "ws://localhost:8090",
   connect: boolean,
-  connectTimeout = 4000,
-  optionalApis: {
-    enableDatabase?: boolean,
-    enableHistory?: boolean,
-    enableNetworkBroadcast?: boolean,
-    enableCrypto?: boolean,
-    enableOrders?: boolean 
-  } = {
+  connectTimeout: number = 4000,
+  optionalApis: OptionalApis = {
     enableDatabase: false,
     enableHistory: false,
     enableNetworkBroadcast: false,
@@ -268,30 +337,27 @@ const reset = (
     enableOrders: false
   },
   closeCb?: any
-) => {
-  return close().then(() => {
-    Api = newApis();
-    Api.setRpcConnectionStatusCallback(callbackStatus);
+): Promise<ApiInstance> => {
+  return oldApi.close().then(() => {
+    const Api = newApis();
 
     if (Api && connect) {
-      Api.connect(wssURL, connectTimeout, optionalApis, closeCb);
+      Api.connect(wssURL, connectTimeout, optionalApis);
     }
+
+    if (closeCb) {
+      Api.closeCb = closeCb
+    };
 
     return Api;
   });
 };
 
 const instance = (
-  wssURL = "ws://localhost:8090",
+  wssURL: string = "ws://localhost:8090",
   connect: boolean,
-  connectTimeout = 4000,
-  optionalApis: {
-    enableDatabase?: boolean,
-    enableHistory?: boolean,
-    enableNetworkBroadcast?: boolean,
-    enableCrypto?: boolean,
-    enableOrders?: boolean 
-  } = {
+  connectTimeout: number = 4000,
+  optionalApis: OptionalApis = {
     enableDatabase: false,
     enableHistory: false,
     enableNetworkBroadcast: false,
@@ -299,11 +365,8 @@ const instance = (
     enableOrders: false
   },
   closeCb?: any
-) => {
-  if (!Api) {
-    Api = newApis();
-    Api.setRpcConnectionStatusCallback(callbackStatus);
-  }
+): ApiInstance => {
+  const Api = newApis();
 
   if (Api && connect) {
     Api.connect(wssURL, connectTimeout, optionalApis);
@@ -316,38 +379,9 @@ const instance = (
   return Api;
 };
 
-const chainId = () => {
-  if (Api) {
-    return Api.chain_id;
-  }
-  throw new Error("Api not initialized");
-};
-
-const close = async () => {
-  if (Api) {
-    await Api.close();
-    Api = null;
-  }
-};
-
-const db = get("_db");
-const network = get("_net");
-const history = get("_hist");
-const crypto = get("_crypt");
-const orders = get("_orders");
-
 const Apis = {
-  setRpcConnectionStatusCallback,
-  setAutoReconnect,
   reset,
   instance,
-  chainId,
-  close,
-  db,
-  network,
-  history,
-  crypto,
-  orders,
 }
 
 export default Apis;

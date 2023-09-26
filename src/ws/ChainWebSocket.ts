@@ -3,19 +3,20 @@ const MAX_SEND_LIFE = 5;
 const MAX_RECV_LIFE = MAX_SEND_LIFE * 2;
 
 class ChainWebSocket {
+  public on_close: (() => void) | null = null; // Initialize to null
+  public on_reconnect: (() => void) | null;
+  public keepAliveCb: ((closed: boolean) => void) | null;
+  
   private url: string;
   private statusCb: (status: string) => void;
   private current_reject: ((reason?: any) => void) | null;
   private current_resolve: (() => void) | null = null; // Initialize to null
-  private on_close: (() => void) | null = null; // Initialize to null
   private ws: WebSocket | null = null; // Initialize to null
   private connectionTimeout: any; // Initialize to null
   private keepalive_timer: ReturnType<typeof setInterval> | undefined;
-  private on_reconnect: (() => void) | null;
   private closed: boolean;
   private send_life: number;
   private recv_life: number;
-  private keepAliveCb: ((closed: boolean) => void) | null;
   private cbId: number;
   private responseCbId: number;
   private subs: { [key: string]: { callback: (data: any) => void } };
