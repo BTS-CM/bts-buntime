@@ -67,10 +67,12 @@ const newApis = () => ({
       autoReconnect,
       keepAliveFunction
     );
+    
 
     Api.init_promise = Api.ws_rpc
       .login("", "")
       .then(() => {
+        console.log({ optionalApis })
         if (optionalApis.enableDatabase) {
           // https://dev.bitshares.works/en/latest/api/blockchain_api/database.html
           Api._db = new GrapheneApi(Api.ws_rpc, "database");
