@@ -1,6 +1,4 @@
 import assert from "assert";
-
-import Apis from "../../ws/ApiInstances";
 import ChainConfig from "../../ws/ChainConfig";
 
 import {Signature, PublicKey, hash} from "../../ecc";
@@ -54,14 +52,14 @@ class TransactionBuilder {
 
         @arg {boolean} [broadcast = false]
     */
-    process_transaction(cwallet, signer_pubkeys = null, broadcast = false) {
+    process_transaction(cwallet, apiInstance, signer_pubkeys = null, broadcast = false) {
         let wallet_object = cwallet.wallet.wallet_object;
-        if (Apis.instance().chain_id !== wallet_object.get("chain_id"))
+        if (apiInstance.chain_id !== wallet_object.get("chain_id"))
             return Promise.reject(
                 "Mismatched chain_id; expecting " +
                     wallet_object.get("chain_id") +
                     ", but got " +
-                    Apis.instance().chain_id
+                    apiInstance.chain_id
             );
 
         return this.set_required_fees().then(() => {
@@ -122,7 +120,7 @@ class TransactionBuilder {
     }
 
     /** Typically this is called automatically just prior to signing.  Once finalized this transaction can not be changed. */
-    finalize() {
+    finalize(apiInstance) {
         return new Promise((resolve, reject) => {
             if (this.tr_buffer) {
                 throw new Error("already finalized");
@@ -149,7 +147,7 @@ class TransactionBuilder {
                 resolve();
             } else {
                 resolve(
-                    Apis.instance()
+                    apiInstance
                         .db_api()
                         .exec("get_objects", [["2.1.0"]])
                         .then((response) => {
@@ -296,12 +294,12 @@ class TransactionBuilder {
 
     /* optional: fetch the current head block */
 
-    update_head_block() {
+    update_head_block(apiInstance) {
         return Promise.all([
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_objects", [["2.0.0"]]),
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_objects", [["2.1.0"]])
         ]).then(function(res) {
@@ -360,7 +358,7 @@ class TransactionBuilder {
     }
 
     /** optional: the fees can be obtained from the witness node */
-    set_required_fees(asset_id, removeDuplicates) {
+    set_required_fees(asset_id, removeDuplicates, apiInstance) {
         if (this.tr_buffer) {
             throw new Error("already finalized");
         }
@@ -438,8 +436,9 @@ class TransactionBuilder {
             }
             if (!isDuplicate) {
                 operations.push(opObject);
-                if (feeAssets.indexOf(operations[i][1].fee.asset_id) === -1)
+                if (feeAssets.indexOf(operations[i][1].fee.asset_id) === -1) {
                     feeAssets.push(operations[i][1].fee.asset_id);
+                }
             }
         }
 
@@ -465,7 +464,7 @@ class TransactionBuilder {
         promises.push(
             Promise.all(
                 feeAssets.map(id => {
-                    return Apis.instance()
+                    return apiInstance
                         .db_api()
                         .exec("get_required_fees", [operations, id]);
                 })
@@ -483,12 +482,12 @@ class TransactionBuilder {
             */
             let dynamicObjectIds = feeAssets.map(a => a.replace(/^1\./, "2."));
             promises.push(
-                Apis.instance()
+                apiInstance
                     .db_api()
                     .exec("get_required_fees", [operations, "1.3.0"])
             );
             promises.push(
-                Apis.instance()
+                apiInstance
                     .db_api()
                     .exec("get_objects", [dynamicObjectIds])
             );
@@ -695,13 +694,13 @@ class TransactionBuilder {
         //DEBUG console.log('... get_required_fees',operations,asset_id,flat_fees)
     }
 
-    get_potential_signatures() {
+    get_potential_signatures(apiInstance) {
         var tr_object = ops.signed_transaction.toObject(this);
         return Promise.all([
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_potential_signatures", [tr_object]),
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_potential_address_signatures", [tr_object])
         ]).then(function(results) {
@@ -709,13 +708,13 @@ class TransactionBuilder {
         });
     }
 
-    get_required_signatures(available_keys) {
+    get_required_signatures(available_keys, apiInstance) {
         if (!available_keys.length) {
             return Promise.resolve([]);
         }
         var tr_object = ops.signed_transaction.toObject(this);
         //DEBUG console.log('... tr_object',tr_object)
-        return Apis.instance()
+        return apiInstance
             .db_api()
             .exec("get_required_signatures", [tr_object, available_keys])
             .then(function(required_public_keys) {
@@ -741,7 +740,7 @@ class TransactionBuilder {
         this.signer_private_keys.push([private_key, public_key]);
     }
 
-    sign(chain_id = Apis.instance().chain_id) {
+    sign(chain_id, apiInstance) {
         if (!this.tr_buffer) {
             throw new Error("not finalized");
         }
@@ -753,11 +752,15 @@ class TransactionBuilder {
                 "Transaction was not signed. Do you have a private key? [no_signers]"
             );
         }
+
         var end = this.signer_private_keys.length;
         for (var i = 0; 0 < end ? i < end : i > end; 0 < end ? i++ : i++) {
             var [private_key, public_key] = this.signer_private_keys[i];
             var sig = Signature.signBuffer(
-                Buffer.concat([Buffer.from(chain_id, "hex"), this.tr_buffer]),
+                Buffer.concat([
+                    Buffer.from(chain_id || apiInstance.chain_id, "hex"),
+                    this.tr_buffer
+                ]),
                 private_key,
                 public_key
             );
@@ -778,10 +781,10 @@ class TransactionBuilder {
 
     broadcast(was_broadcast_callback) {
         if (this.tr_buffer) {
-            return this._broadcast(was_broadcast_callback);
+            return this._broadcast(apiInstance, was_broadcast_callback);
         } else {
-            return this.finalize().then(() => {
-                return this._broadcast(was_broadcast_callback);
+            return this.finalize(apiInstance).then(() => {
+                return this._broadcast(apiInstance, was_broadcast_callback);
             });
         }
     }
@@ -799,7 +802,7 @@ var base_expiration_sec = () => {
     return Math.max(now_sec, head_block_sec);
 };
 
-function _broadcast(was_broadcast_callback) {
+function _broadcast(apiInstance, was_broadcast_callback) {
     return new Promise((resolve, reject) => {
         if (!this.signed) {
             this.sign();
@@ -816,7 +819,7 @@ function _broadcast(was_broadcast_callback) {
 
         var tr_object = ops.signed_transaction.toObject(this);
         // console.log('... broadcast_transaction_with_callback !!!')
-        Apis.instance()
+        apiInstance
             .network_api()
             .exec("broadcast_transaction_with_callback", [
                 function(res) {
@@ -826,7 +829,9 @@ function _broadcast(was_broadcast_callback) {
             ])
             .then(function() {
                 //console.log('... broadcast success, waiting for callback')
-                if (was_broadcast_callback) was_broadcast_callback();
+                if (was_broadcast_callback) {
+                    was_broadcast_callback();
+                }
                 return;
             })
             .catch(error => {

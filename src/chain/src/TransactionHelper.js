@@ -5,7 +5,6 @@ import {Long} from "@exodus/bytebuffer";
 
 import {Signature} from "../../ecc";
 import {ops} from "../../serializer";
-import Apis from "../../ws/ApiInstances";
 
 helper.unique_nonce_entropy = null;
 helper.unique_nonce_uint64 = function() {
@@ -26,11 +25,11 @@ helper.unique_nonce_uint64 = function() {
 };
 
 /* Todo, set fees */
-helper.to_json = function(tr, broadcast = false) {
+helper.to_json = function(tr, apiInstance, broadcast = false) {
     return (function(tr, broadcast) {
         var tr_object = ops.signed_transaction.toObject(tr);
         if (broadcast) {
-            var net = Apis.instance().network_api();
+            var net = apiInstance.network_api();
             console.log("... tr_object", JSON.stringify(tr_object));
             return net.exec("broadcast_transaction", [tr_object]);
         } else {

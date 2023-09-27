@@ -1,6 +1,5 @@
 import {Map as imMap, List, fromJS, Set as imSet} from "immutable";
 import BigInteger from "bigi";
-import Apis from "../../ws/ApiInstances";
 
 import ChainTypes from "./ChainTypes";
 import ChainValidation from "./ChainValidation";
@@ -95,12 +94,12 @@ class ChainStore {
         this.dispatched = false;
     }
 
-    resetCache(subscribe_to_new) {
+    resetCache(apiInstance, subscribe_to_new) {
         this.subscribed = false;
         this.subError = null;
         this.clearCache();
         this.head_block_time_string = null;
-        return this.init(subscribe_to_new).catch(err => {
+        return this.init(apiInstance, subscribe_to_new).catch(err => {
             throw err;
         });
     }
@@ -109,11 +108,13 @@ class ChainStore {
         this.dispatchFrequency = freq;
     }
 
-    init(subscribe_to_new = true) {
+    init(apiInstance, subscribe_to_new = true) {
         let reconnectCounter = 0;
         var _init = (resolve, reject) => {
-            if (this.subscribed) return resolve();
-            let db_api = Apis.instance().db_api();
+            if (this.subscribed) {
+                return resolve();
+            }
+            let db_api = apiInstance.db_api();
             if (!db_api) {
                 return reject(
                     new Error(
@@ -153,7 +154,7 @@ class ChainStore {
                             // this.progress = progress_delta / (now-start);
 
                             if (delta < 60) {
-                                Apis.instance()
+                                apiInstance
                                     .db_api()
                                     .exec("set_subscribe_callback", [
                                         this.onUpdate.bind(this),
@@ -390,6 +391,7 @@ class ChainStore {
      */
     getObject(
         id,
+        apiInstance,
         force = false,
         autosubscribe = null,
         no_full_account = false
@@ -408,7 +410,7 @@ class ChainStore {
 
         if (result === null && !force) return result;
         if (result === undefined || force || subChange)
-            return this.fetchObject(id, force, autosubscribe, no_full_account);
+            return this.fetchObject(id, apiInstance, force, autosubscribe, no_full_account);
         if (result === true) return undefined;
 
         return result;
@@ -419,7 +421,7 @@ class ChainStore {
      *  @return null if id_or_symbol has been queired and does not exist
      *  @return object if the id_or_symbol exists
      */
-    getAsset(id_or_symbol) {
+    getAsset(id_or_symbol, apiInstance) {
         if (!id_or_symbol) return null;
 
         if (ChainValidation.is_object_id(id_or_symbol)) {
@@ -452,11 +454,15 @@ class ChainStore {
             return asset;
         }
 
-        if (asset_id === null) return null;
+        if (asset_id === null) {
+            return null
+        };
 
-        if (asset_id === true) return undefined;
+        if (asset_id === true) {
+            return undefined;
+        }
 
-        Apis.instance()
+        apiInstance
             .db_api()
             .exec("lookup_asset_symbols", [[id_or_symbol]])
             .then(asset_objects => {
@@ -486,13 +492,13 @@ class ChainStore {
      *  the server for the current set of accounts after which the
      *  server will notify us of any accounts that reference these keys
      */
-    getAccountRefsOfKey(key) {
-        if (this.get_account_refs_of_keys_calls.has(key))
+    getAccountRefsOfKey(apiInstance, key) {
+        if (this.get_account_refs_of_keys_calls.has(key)) {
             return this.account_ids_by_key.get(key);
-        else {
+        } else {
             this.get_account_refs_of_keys_calls.add(key);
 
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_key_references", [[key]])
                 .then(vec_account_id => {
@@ -518,7 +524,6 @@ class ChainStore {
                 });
             return undefined;
         }
-        return undefined;
     }
 
     /**
@@ -532,13 +537,14 @@ class ChainStore {
      *  the server for the current set of accounts after which the
      *  server will notify us of any accounts that reference these keys
      */
-    getAccountRefsOfAccount(account_id) {
-        if (this.get_account_refs_of_accounts_calls.has(account_id))
+    getAccountRefsOfAccount(apiInstance, account_id) {
+        if (this.get_account_refs_of_accounts_calls.has(account_id)) {
             return this.account_ids_by_account.get(account_id);
-        else {
+
+        } else {
             this.get_account_refs_of_accounts_calls.add(account_id);
 
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_account_references", [account_id])
                 .then(vec_account_id => {
@@ -563,7 +569,6 @@ class ChainStore {
                 });
             return undefined;
         }
-        return undefined;
     }
 
     /**
@@ -574,14 +579,14 @@ class ChainStore {
      * If this method returns undefined, then it will send a request to the server for
      * the current state after which it will be subscribed to changes to this set.
      */
-    getBalanceObjects(address) {
+    getBalanceObjects(address, apiInstance) {
         let current = this.balance_objects_by_address.get(address);
         if (current === undefined) {
             /** because balance objects are simply part of the genesis state, there is no need to worry about
              * having to update them / merge them or index them in updateObject.
              */
             this.balance_objects_by_address.set(address, imSet());
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_balance_objects", [[address]])
                 .then(
@@ -615,6 +620,7 @@ class ChainStore {
      */
     fetchObject(
         id,
+        apiInstance,
         force = false,
         autosubscribe = null,
         no_full_account = false
@@ -624,36 +630,50 @@ class ChainStore {
         }
         if (typeof id !== "string") {
             let result = [];
-            for (let i = 0; i < id.length; ++i)
-                result.push(this.fetchObject(id[i], force, autosubscribe));
+            for (let i = 0; i < id.length; ++i) {
+                result.push(this.fetchObject(id[i], apiInstance, force, autosubscribe));
+            }
             return result;
         }
 
-        if (DEBUG)
+        if (DEBUG) {
             console.log(
                 "!!! fetchObject: ",
                 id,
                 this.subscribed,
                 !this.subscribed && !force
             );
+        }
         if (!this.subscribed && !force) return undefined;
 
-        if (DEBUG) console.log("maybe fetch object: ", id);
-        if (!ChainValidation.is_object_id(id))
+        if (DEBUG) {
+            console.log("maybe fetch object: ", id);
+        }
+        if (!ChainValidation.is_object_id(id)) {
             throw Error("argument is not an object id: " + id);
+        }
 
-        if (id.search("1.2.") === 0 && !no_full_account)
+        if (id.search("1.2.") === 0 && !no_full_account) {
             return this.fetchFullAccount(id, autosubscribe);
-        if (id.search(witness_prefix) === 0) this._subTo("witnesses", id);
-        if (id.search(committee_prefix) === 0) this._subTo("committee", id);
+        }
+        if (id.search(witness_prefix) === 0) {
+            this._subTo("witnesses", id);
+        }
+        if (id.search(committee_prefix) === 0) {
+            this._subTo("committee", id);
+        }
 
         let result = this.objects_by_id.get(id);
         if (result === undefined) {
             // the fetch
-            if (DEBUG) console.log("fetching object: ", id);
+            if (DEBUG) {
+                console.log("fetching object: ", id)
+            };
             this.objects_by_id.set(id, true);
-            if (!Apis.instance().db_api()) return null;
-            Apis.instance()
+            if (!apiInstance.db_api()) {
+                return null
+            };
+            apiInstance
                 .db_api()
                 .exec("get_objects", [[id]])
                 .then(optional_objects => {
@@ -684,22 +704,24 @@ class ChainStore {
      *  @return undefined if such an account may exist, and fetch the the full account if not already pending
      *  @return the account object if it does exist
      */
-    getAccount(name_or_id, autosubscribe = null) {
+    getAccount(name_or_id, apiInstance, autosubscribe = null) {
         if (autosubscribe == null) {
             autosubscribe = default_auto_subscribe;
         }
         if (!name_or_id) return null;
 
         if (typeof name_or_id === "object") {
-            if (name_or_id.id)
-                return this.getAccount(name_or_id.id, autosubscribe);
-            else if (name_or_id.get)
-                return this.getAccount(name_or_id.get("id"), autosubscribe);
-            else return undefined;
+            if (name_or_id.id) {
+                return this.getAccount(name_or_id.id, apiInstance, autosubscribe);
+            } else if (name_or_id.get) {
+                return this.getAccount(name_or_id.get("id"), apiInstance, autosubscribe);
+            } else {
+                return undefined;
+            }
         }
 
         if (ChainValidation.is_object_id(name_or_id)) {
-            let account = this.getObject(name_or_id, false, autosubscribe);
+            let account = this.getObject(name_or_id, apiInstance, false, autosubscribe);
             if (account === null) {
                 return null;
             }
@@ -713,7 +735,7 @@ class ChainStore {
                 account === undefined ||
                 account.get("name") === undefined
             ) {
-                return this.fetchFullAccount(name_or_id, autosubscribe);
+                return this.fetchFullAccount(name_or_id, apiInstance, autosubscribe);
             }
             return account;
         } else if (ChainValidation.is_account_name(name_or_id, true)) {
@@ -721,9 +743,9 @@ class ChainStore {
             if (account_id === null) return null; // already fetched and it wasn't found
             if (account_id === undefined)
                 // then no query, fetch it
-                return this.fetchFullAccount(name_or_id, autosubscribe);
+                return this.fetchFullAccount(name_or_id, apiInstance, autosubscribe);
 
-            return this.getObject(account_id, false, autosubscribe); // return it
+            return this.getObject(account_id, apiInstance, false, autosubscribe); // return it
         } else {
             return null;
         }
@@ -735,11 +757,11 @@ class ChainStore {
      *  @return null if the account name or id are unvalid, or the account does not exist
      *  @return the account name
      */
-    getAccountName(id) {
+    getAccountName(id, apiInstance) {
         let account = this.objects_by_id.get(id);
         if (account === true) return undefined;
         if (!account) {
-            this.getObject(id, false, false, true);
+            this.getObject(id, apiInstance, false, false, true);
             return undefined;
         }
         return account.get("name");
@@ -751,10 +773,10 @@ class ChainStore {
      * if it's not fetched yet it will return undefined.
      * @param account_id - account id
      */
-    getWitnessById(account_id) {
+    getWitnessById(account_id, apiInstance) {
         let witness_id = this.witness_by_account_id.get(account_id);
         if (witness_id === undefined) {
-            this.fetchWitnessByAccount(account_id);
+            this.fetchWitnessByAccount(account_id, apiInstance);
             return undefined;
         } else if (witness_id) {
             this._subTo("witnesses", witness_id);
@@ -769,30 +791,30 @@ class ChainStore {
      * if it's not fetched yet it will return undefined.
      * @param account_id - account id
      */
-    getCommitteeMemberById(account_id) {
+    getCommitteeMemberById(account_id, apiInstance) {
         let cm_id = this.committee_by_account_id.get(account_id);
         if (cm_id === undefined) {
-            this.fetchCommitteeMemberByAccount(account_id);
+            this.fetchCommitteeMemberByAccount(account_id, apiInstance);
             return undefined;
         } else if (cm_id) {
             this._subTo("committee", cm_id);
         }
-        return cm_id ? this.getObject(cm_id) : null;
+        return cm_id ? this.getObject(cm_id, apiInstance) : null;
     }
 
     /**
      *
      * @return a promise with the workers array
      */
-    fetchAllWorkers() {
+    fetchAllWorkers(apiInstance) {
         return new Promise((resolve, reject) => {
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_all_workers", [])
                 .then(workers_array => {
                     if (workers_array && workers_array.length) {
                         workers_array.forEach(worker => {
-                            this._updateObject(worker, false);
+                            this._updateObject(worker, apiInstance, false);
                         });
                         resolve(workers_array);
                         this.notifySubscribers();
@@ -807,9 +829,9 @@ class ChainStore {
      *
      * @return a promise with the witness object
      */
-    fetchWitnessByAccount(account_id) {
+    fetchWitnessByAccount(account_id, apiInstance) {
         return new Promise((resolve, reject) => {
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_witness_by_account", [account_id])
                 .then(optional_witness_object => {
@@ -821,6 +843,7 @@ class ChainStore {
                         );
                         let witness_object = this._updateObject(
                             optional_witness_object,
+                            apiInstance,
                             true
                         );
                         resolve(witness_object);
@@ -839,9 +862,9 @@ class ChainStore {
      *
      * @return a promise with the witness object
      */
-    fetchCommitteeMemberByAccount(account_id) {
+    fetchCommitteeMemberByAccount(account_id, apiInstance) {
         return new Promise((resolve, reject) => {
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_committee_member_by_account", [account_id])
                 .then(optional_committee_object => {
@@ -853,6 +876,7 @@ class ChainStore {
                         );
                         let committee_object = this._updateObject(
                             optional_committee_object,
+                            apiInstance,
                             true
                         );
                         resolve(committee_object);
@@ -872,7 +896,7 @@ class ChainStore {
      * Sets flags to enable request of more data when loading fetchFullAccount
      * based on the new API limitations of objects.
      */
-    requestAllDataForAccount(account_id, object_type) {
+    requestAllDataForAccount(account_id, object_type, apiInstance) {
         let current = this.objects_by_id.get(account_id);
 
         /***
@@ -883,13 +907,13 @@ class ChainStore {
          */
 
         if (current.toJS().more_data_available.balances && object_type == "balance") {
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_account_balances", [account_id, []])
                 .then(balances => {
                     current.balances = balances;
                 })
-            this._updateObject(current);
+            this._updateObject(current, apiInstance);
         }
     }
 
@@ -902,11 +926,13 @@ class ChainStore {
      *  @return the object if it has already been fetched
      *  @return null if the object has been queried and was not found
      */
-    fetchFullAccount(name_or_id, autosubscribe = null) {
+    fetchFullAccount(name_or_id, apiInstance, autosubscribe = null) {
         if (autosubscribe == null) {
             autosubscribe = default_auto_subscribe;
         }
-        if (DEBUG) console.log("Fetch full account: ", name_or_id);
+        if (DEBUG) {
+            console.log("Fetch full account: ", name_or_id);
+        }
 
         let fetch_account = false;
         const subChanged =
@@ -915,8 +941,7 @@ class ChainStore {
                 autosubscribe);
 
         const is_object_id = ChainValidation.is_object_id(name_or_id);
-        const is_account_name =
-            !is_object_id && ChainValidation.is_account_name(name_or_id, true);
+        const is_account_name = !is_object_id && ChainValidation.is_account_name(name_or_id, true);
 
         if (is_object_id && !subChanged) {
             let current = this.objects_by_id.get(name_or_id);
@@ -927,15 +952,17 @@ class ChainStore {
                     current.get &&
                     current.get("name") &&
                     current.has("balances"))
-            )
+            ) {
                 return current;
+            }
         } else if (!subChanged) {
-            if (!is_account_name)
+            if (!is_account_name) {
                 throw Error("argument is not an account name: " + name_or_id);
-
+            }
             let account_id = this.accounts_by_name.get(name_or_id);
-            if (ChainValidation.is_object_id(account_id))
-                return this.getAccount(account_id, autosubscribe);
+            if (ChainValidation.is_object_id(account_id)) {
+                return this.getAccount(account_id, apiInstance, autosubscribe);
+            }
         }
 
         /// only fetch once every 5 seconds if it wasn't found, or if the subscribe status changed to true
@@ -945,7 +972,7 @@ class ChainStore {
             Date.now() - this.fetching_get_full_accounts.get(name_or_id) > 5000
         ) {
             this.fetching_get_full_accounts.set(name_or_id, Date.now());
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("get_full_accounts", [[name_or_id], autosubscribe])
                 .then(results => {
@@ -1021,7 +1048,7 @@ class ChainStore {
                     account.vesting_balances = account.vesting_balances.withMutations(
                         set => {
                             vesting_balances.forEach(vb => {
-                                this._updateObject(vb);
+                                this._updateObject(vb, apiInstance);
                                 set.add(vb.id);
                             });
                         }
@@ -1029,18 +1056,20 @@ class ChainStore {
 
                     let sub_to_objects = [];
 
-                    votes.forEach(v => this._updateObject(v));
+                    votes.forEach(v => this._updateObject(v, apiInstance));
 
                     account.balances = account.balances.withMutations(map => {
                         full_account.balances.forEach(b => {
-                            this._updateObject(b);
+                            this._updateObject(b, apiInstance);
                             map.set(b.asset_type, b.id);
-                            if (autosubscribe) sub_to_objects.push(b.id);
+                            if (autosubscribe) {
+                                sub_to_objects.push(b.id);
+                            }
                         });
                     });
                     account.orders = account.orders.withMutations(set => {
                         limit_orders.forEach(order => {
-                            this._updateObject(order);
+                            this._updateObject(order, apiInstance);
                             set.add(order.id);
                             if (autosubscribe) sub_to_objects.push(order.id);
                         });
@@ -1048,7 +1077,7 @@ class ChainStore {
                     account.call_orders = account.call_orders.withMutations(
                         set => {
                             call_orders.forEach(co => {
-                                this._updateObject(co);
+                                this._updateObject(co, apiInstance);
                                 set.add(co.id);
                                 if (autosubscribe) sub_to_objects.push(co.id);
                             });
@@ -1057,7 +1086,7 @@ class ChainStore {
                     account.settle_orders = account.settle_orders.withMutations(
                         set => {
                             settle_orders.forEach(so => {
-                                this._updateObject(so);
+                                this._updateObject(so, apiInstance);
                                 set.add(so.id);
                                 if (autosubscribe) sub_to_objects.push(so.id);
                             });
@@ -1066,7 +1095,7 @@ class ChainStore {
                     account.htlcs_to = account.htlcs_to.withMutations(
                         set => {
                             htlcs_to.forEach(htlc => {
-                                this._updateObject(htlc);
+                                this._updateObject(htlc, apiInstance);
                                 set.add(htlc.id);
                                 if (autosubscribe) sub_to_objects.push(htlc.id);
                             });
@@ -1075,7 +1104,7 @@ class ChainStore {
                     account.htlcs_from = account.htlcs_from.withMutations(
                         set => {
                             htlcs_from.forEach(htlc => {
-                                this._updateObject(htlc);
+                                this._updateObject(htlc, apiInstance);
                                 set.add(htlc.id);
                                 if (autosubscribe) sub_to_objects.push(htlc.id);
                             });
@@ -1083,7 +1112,7 @@ class ChainStore {
                     );
                     account.proposals = account.proposals.withMutations(set => {
                         proposals.forEach(p => {
-                            this._updateObject(p);
+                            this._updateObject(p, apiInstance);
                             set.add(p.id);
                             if (autosubscribe) sub_to_objects.push(p.id);
                         });
@@ -1094,14 +1123,15 @@ class ChainStore {
                         * we need to manually fetch them with get_objects. This
                         * is only done if autosubscribe is true
                         */
-                    if (sub_to_objects.length)
-                        Apis.instance()
+                    if (sub_to_objects.length) {
+                        apiInstance
                             .db_api()
                             .exec("get_objects", [sub_to_objects]);
+                    }
 
-                    this._updateObject(statistics);
-                    let updated_account = this._updateObject(account);
-                    this.fetchRecentHistory(updated_account);
+                    this._updateObject(statistics, apiInstance);
+                    let updated_account = this._updateObject(account, apiInstance);
+                    this.fetchRecentHistory(updated_account, apiInstance);
                     this.notifySubscribers();
                 })
                 .catch(error => {
@@ -1119,8 +1149,11 @@ class ChainStore {
                             this.notifySubscribers();
                         }
                     } else {
-                        if (is_object_id) this.objects_by_id.delete(name_or_id);
-                        else this.accounts_by_name.delete(name_or_id);
+                        if (is_object_id) {
+                            this.objects_by_id.delete(name_or_id);
+                        } else {
+                            this.accounts_by_name.delete(name_or_id);
+                        }
                     }
                 });
         }
@@ -1128,24 +1161,35 @@ class ChainStore {
     }
 
     getAccountMemberStatus(account) {
-        if (account === undefined) return undefined;
-        if (account === null) return "unknown";
-        if (account.get("lifetime_referrer") == account.get("id"))
+        if (account === undefined) {
+            return undefined;
+        }
+        if (account === null) {
+            return "unknown";
+        }
+        if (account.get("lifetime_referrer") == account.get("id")) {
             return "lifetime";
+        }
         let exp = new Date(account.get("membership_expiration_date")).getTime();
         let now = new Date().getTime();
-        if (exp < now) return "basic";
+        if (exp < now) {
+            return "basic";
+        }
         return "annual";
     }
 
     getAccountBalance(account, asset_type) {
         let balances = account.get("balances");
-        if (!balances) return 0;
+        if (!balances) {
+            return 0;
+        }
 
         let balance_obj_id = balances.get(asset_type);
         if (balance_obj_id) {
             let bal_obj = this.objects_by_id.get(balance_obj_id);
-            if (bal_obj) return bal_obj.get("balance");
+            if (bal_obj) {
+                return bal_obj.get("balance");
+            }
         }
         return 0;
     }
@@ -1159,36 +1203,45 @@ class ChainStore {
      *  @param account immutable account object
      *  @return a promise with the account history
      */
-    fetchRecentHistory(account, limit = 100) {
+    fetchRecentHistory(account, apiInstance, limit = 100) {
         // console.log( "get account history: ", account )
         /// TODO: make sure we do not submit a query if there is already one
         /// in flight...
         let account_id = account;
-        if (!ChainValidation.is_object_id(account_id) && account.toJS)
+        if (!ChainValidation.is_object_id(account_id) && account.toJS) {
             account_id = account.get("id");
+        }
 
-        if (!ChainValidation.is_object_id(account_id)) return;
+        if (!ChainValidation.is_object_id(account_id)) {
+            return;
+        }
 
         account = this.objects_by_id.get(account_id);
-        if (!account || account === true) return;
+        if (!account || account === true) {
+            return;
+        }
 
         let pending_request = this.account_history_requests.get(account_id);
         if (pending_request) {
             pending_request.requests++;
             return pending_request.promise;
-        } else pending_request = {requests: 0};
+        } else {
+            pending_request = {requests: 0};
+        }
 
         let most_recent = "1." + op_history + ".0";
         let history = account.get("history");
 
-        if (history && history.size) most_recent = history.first().get("id");
+        if (history && history.size) {
+            most_recent = history.first().get("id");
+        }
 
         /// starting at 0 means start at NOW, set this to something other than 0
         /// to skip recent transactions and fetch the tail
         let start = "1." + op_history + ".0";
 
         pending_request.promise = new Promise((resolve, reject) => {
-            Apis.instance()
+            apiInstance
                 .history_api()
                 .exec("get_account_history", [
                     account_id,
@@ -1198,37 +1251,41 @@ class ChainStore {
                 ])
                 .then(operations => {
                     let current_account = this.objects_by_id.get(account_id);
-                    if (!current_account) return;
+                    if (!current_account) {
+                        return;
+                    }
+
                     let current_history = current_account.get("history");
-                    if (!current_history) current_history = List();
+                    if (!current_history) {
+                        current_history = List();
+                    }
+
                     let updated_history = fromJS(operations);
                     updated_history = updated_history.withMutations(list => {
                         for (let i = 0; i < current_history.size; ++i)
                             list.push(current_history.get(i));
                     });
+
                     let updated_account = current_account.set(
                         "history",
                         updated_history
                     );
                     this.objects_by_id.set(account_id, updated_account);
 
-                    //if( current_history != updated_history )
-                    //   this._notifyAccountSubscribers( account_id )
-
-                    let pending_request = this.account_history_requests.get(
-                        account_id
-                    );
+                    let pending_request = this.account_history_requests.get(account_id);
                     this.account_history_requests.delete(account_id);
                     if (pending_request.requests > 0) {
                         // it looks like some more history may have come in while we were
                         // waiting on the result, lets fetch anything new before we resolve
                         // this query.
-                        this.fetchRecentHistory(updated_account, limit).then(
+                        this.fetchRecentHistory(updated_account, apiInstance, limit).then(
                             resolve,
                             reject
                         );
-                    } else resolve(updated_account);
-                }); // end then
+                    } else {
+                        resolve(updated_account);
+                    }
+                });
         });
 
         this.account_history_requests.set(account_id, pending_request);
@@ -1248,7 +1305,7 @@ class ChainStore {
      *  @pre object.id must be a valid object ID
      *  @return an Immutable constructed from object and deep merged with the current state
      */
-    _updateObject(object, notify_subscribers = false, emit = true) {
+    _updateObject(object, apiInstance, notify_subscribers = false, emit = true) {
         if (!("id" in object)) {
             console.log("object with no id:", object);
             /* Settle order updates look different and need special handling */
@@ -1269,14 +1326,12 @@ class ChainStore {
         * A lot of objects get spammed by the API that we don't care about, filter these out here
         */
         // Transaction object
-
         switch (objectType) {
             case "transaction":
             case "operation_history":
             case "block_summary":
                 return; // console.log("not interested in:", objectType, object);
                 break;
-
             case "account_transaction_history":
             case "limit_order":
             case "call_order":
@@ -1294,13 +1349,11 @@ class ChainStore {
                     return; // console.log("not interested in", objectType, object.account || object.seller || object.borrower || object.owner);
                 }
                 break;
-
             case "witness":
                 if (!this._isSubbedTo("witnesses", object.id)) {
                     return;
                 }
                 break;
-
             case "committee_member":
                 if (!this._isSubbedTo("committee", object.id)) {
                     return;
@@ -1324,8 +1377,9 @@ class ChainStore {
             this.chain_time_offset.push(
                 Date.now() - timeStringToDate(object.time).getTime()
             );
-            if (this.chain_time_offset.length > 10)
+            if (this.chain_time_offset.length > 10) {
                 this.chain_time_offset.shift(); // remove first
+            }
         }
 
         let current = this.objects_by_id.get(object.id);
@@ -1336,13 +1390,14 @@ class ChainStore {
         let prior = current;
 
         /* New object */
-        if (current === undefined || current === true)
+        if (current === undefined || current === true) {
             this.objects_by_id.set(
                 object.id,
                 (current = fromJS(object))
             );
-        else {
-            /* Existing object */ switch (objectType) {
+        } else {
+            /* Existing object */ 
+            switch (objectType) {
                 /*
                 * These cases have additional data attached inside the chainstore,
                 * so we need to use mergeDeep to keep that data
@@ -1371,9 +1426,7 @@ class ChainStore {
         }
 
         /* Special handling for various objects */
-
         // BALANCE OBJECT
-
         switch (objectType) {
             case "account_balance":
                 let owner = this.objects_by_id.get(object.owner);
@@ -1399,7 +1452,7 @@ class ChainStore {
                     );
 
                     if (prior_most_recent_op != object.most_recent_op) {
-                        this.fetchRecentHistory(object.owner);
+                        this.fetchRecentHistory(object.owner, apiInstance);
                     }
                 } catch (err) {
                     console.log("object:", object, "prior", prior, "err:", err);
@@ -1434,7 +1487,9 @@ class ChainStore {
                 this.objects_by_vote_id.set(object.vote_for, object.id);
                 this.objects_by_vote_id.set(object.vote_against, object.id);
 
-                if (!this.workers.has(object.id)) this.workers.add(object.id);
+                if (!this.workers.has(object.id)) {
+                    this.workers.add(object.id);
+                }
                 break;
 
             case "account":
@@ -1465,7 +1520,6 @@ class ChainStore {
                 );
                 this.objects_by_id.set(object.id, current);
                 this.accounts_by_name.set(object.name, object.id);
-
                 break;
 
             case "asset":
@@ -1474,9 +1528,10 @@ class ChainStore {
                 // make sure we fetch the bitasset data object
                 let bitasset = current.get("bitasset");
                 if (!bitasset && "bitasset_data_id" in object) {
-                    let bad = this.getObject(object.bitasset_data_id, true);
-                    if (!bad) bad = imMap();
-
+                    let bad = this.getObject(object.bitasset_data_id, apiInstance, true);
+                    if (!bad) {
+                        bad = imMap();
+                    }
                     if (!bad.get("asset_id")) {
                         bad = bad.set("asset_id", object.id);
                     }
@@ -1490,7 +1545,7 @@ class ChainStore {
             case "asset_bitasset_data":
                 let asset_id = current.get("asset_id");
                 if (asset_id) {
-                    let asset = this.getObject(asset_id);
+                    let asset = this.getObject(asset_id, apiInstance);
                     if (asset) {
                         asset = asset.set("bitasset", current);
                         emitter.emit("bitasset-update", asset);
@@ -1506,11 +1561,12 @@ class ChainStore {
 
                 let call_account = this.objects_by_id.get(object.borrower);
                 if (call_account && call_account !== true) {
-                    if (!call_account.has("call_orders"))
+                    if (!call_account.has("call_orders")) {
                         call_account = call_account.set(
                             "call_orders",
                             new imSet()
                         );
+                    }
                     let call_orders = call_account.get("call_orders");
                     if (!call_orders.has(object.id)) {
                         call_account = call_account.set(
@@ -1521,7 +1577,7 @@ class ChainStore {
                             call_account.get("id"),
                             call_account
                         );
-                        Apis.instance()
+                        apiInstance
                             .db_api()
                             .exec("get_objects", [[object.id]]); // Force subscription to the object in the witness node by calling get_objects
                     }
@@ -1531,11 +1587,13 @@ class ChainStore {
             case "limit_order":
                 let limit_account = this.objects_by_id.get(object.seller);
                 if (limit_account && limit_account !== true) {
-                    if (!limit_account.has("orders"))
+                    if (!limit_account.has("orders")) {
                         limit_account = limit_account.set(
                             "orders",
                             new imSet()
                         );
+                    }
+
                     let limit_orders = limit_account.get("orders");
                     if (!limit_orders.has(object.id)) {
                         limit_account = limit_account.set(
@@ -1546,7 +1604,7 @@ class ChainStore {
                             limit_account.get("id"),
                             limit_account
                         );
-                        Apis.instance()
+                        apiInstance
                             .db_api()
                             .exec("get_objects", [[object.id]]); // Force subscription to the object in the witness node by calling get_objects
                     }
@@ -1558,14 +1616,12 @@ class ChainStore {
                 * Make sure notify_subscribers is set to true if a proposal is
                 * added to an account
                 */
-                notify_subscribers =
-                    notify_subscribers ||
+                notify_subscribers = notify_subscribers ||
                     this.addProposalData(
                         object.required_active_approvals,
                         object.id
                     );
-                notify_subscribers =
-                    notify_subscribers ||
+                notify_subscribers = notify_subscribers ||
                     this.addProposalData(
                         object.required_owner_approvals,
                         object.id
@@ -1581,13 +1637,14 @@ class ChainStore {
         return current;
     }
 
-    getObjectsByVoteIds(vote_ids) {
+    getObjectsByVoteIds(vote_ids, apiInstance) {
         let result = [];
         let missing = [];
         for (let i = 0; i < vote_ids.length; ++i) {
             let obj = this.objects_by_vote_id.get(vote_ids[i]);
-            if (obj) result.push(this.getObject(obj));
-            else {
+            if (obj) {
+                result.push(this.getObject(obj, apiInstance));
+            } else {
                 result.push(null);
                 missing.push(vote_ids[i]);
             }
@@ -1595,15 +1652,10 @@ class ChainStore {
 
         if (missing.length) {
             // we may need to fetch some objects
-            Apis.instance()
+            apiInstance
                 .db_api()
                 .exec("lookup_vote_ids", [missing])
                 .then(vote_obj_array => {
-                    // console.log("missing ===========> ", missing);
-                    // console.log(
-                    //     "vote objects ===========> ",
-                    //     vote_obj_array
-                    // );
                     for (let i = 0; i < vote_obj_array.length; ++i) {
                         if (vote_obj_array[i]) {
                             let isWitness =
@@ -1615,7 +1667,7 @@ class ChainStore {
                                 isWitness ? "witnesses" : "committee",
                                 vote_obj_array[i].id
                             );
-                            this._updateObject(vote_obj_array[i]);
+                            this._updateObject(vote_obj_array[i], apiInstance);
                         }
                     }
                 })
@@ -1628,7 +1680,7 @@ class ChainStore {
 
     getObjectByVoteID(vote_id) {
         let obj_id = this.objects_by_vote_id.get(vote_id);
-        if (obj_id) return this.getObject(obj_id);
+        if (obj_id) return this.getObject(obj_id, apiInstance);
         return undefined;
     }
 
@@ -1637,7 +1689,9 @@ class ChainStore {
     }
 
     getEstimatedChainTimeOffset() {
-        if (this.chain_time_offset.length === 0) return 0;
+        if (this.chain_time_offset.length === 0) {
+            return 0;
+        }
         // Immutable is fast, sorts numbers correctly, and leaves the original unmodified
         // This will fix itself if the user changes their clock
         var median_offset = List(this.chain_time_offset)
@@ -1674,7 +1728,7 @@ class ChainStore {
         return didImpact;
     }
 
-    getLiquidityPoolsByAssets(assetType = 'asset_a', assetA, assetB, limit = 101, startId) {
+    getLiquidityPoolsByAssets(assetType = 'asset_a', assetA, assetB, limit = 101, startId, apiInstance) {
         const ASSET_TYPE = [
             'asset_a',
             'asset_b',
@@ -1716,7 +1770,7 @@ class ChainStore {
                 break;
         }
 
-        return Apis.instance()
+        return apiInstance
             .db_api()
             .exec(methodName, params)
             .then(
@@ -1724,9 +1778,9 @@ class ChainStore {
                     if (result.length > 0) {
                         const tmp = [];
                         result.forEach(pool => {
-                            pool.asset_a = this.getAsset(pool.asset_a);
-                            pool.asset_b = this.getAsset(pool.asset_b);
-                            pool.share_asset = this.getAsset(pool.share_asset);
+                            pool.asset_a = this.getAsset(pool.asset_a, apiInstance);
+                            pool.asset_b = this.getAsset(pool.asset_b, apiInstance);
+                            pool.share_asset = this.getAsset(pool.share_asset, apiInstance);
                             pool.dynamic_share_asset = this.getObject(pool.share_asset.get('dynamic_asset_data_id'));
                             tmp.push(pool);
                         });
@@ -1740,8 +1794,8 @@ class ChainStore {
             });
     }
 
-    getLiquidityPoolsByShareAsset(assets, subscribe = false) {
-        return Apis.instance()
+    getLiquidityPoolsByShareAsset(assets, apiInstance, subscribe = false) {
+        return apiInstance
             .db_api()
             .exec(
                 'get_liquidity_pools_by_share_asset',
@@ -1755,10 +1809,10 @@ class ChainStore {
                     if (result.length > 0) {
                         const tmp = [];
                         result.forEach(pool => {
-                            pool.asset_a = this.getAsset(pool.asset_a);
-                            pool.asset_b = this.getAsset(pool.asset_b);
-                            pool.share_asset = this.getAsset(pool.share_asset);
-                            pool.dynamic_share_asset = this.getObject(pool.share_asset.get('dynamic_asset_data_id'));
+                            pool.asset_a = this.getAsset(pool.asset_a, apiInstance);
+                            pool.asset_b = this.getAsset(pool.asset_b, apiInstance);
+                            pool.share_asset = this.getAsset(pool.share_asset, apiInstance);
+                            pool.dynamic_share_asset = this.getObject(pool.share_asset.get('dynamic_asset_data_id'), apiInstance);
                             tmp.push(pool);
                         });
                         return fromJS(tmp);
@@ -1782,15 +1836,21 @@ function FetchChainObjects(method, object_ids, timeout, subMap) {
 
         function onUpdate(not_subscribed_yet = false) {
             let res = object_ids.map(id => {
-                if (method.name === "getAccount")
-                    return get_object(id, subMap[id]);
-                if (method.name === "getObject")
+                if (method.name === "getAccount") {
+                    return get_object(id, subMap[id]); // TODO: Pass apiInstance
+                }
+                if (method.name === "getObject") {
                     return get_object(id, false, subMap[id]);
+                }
                 return get_object(id);
             });
             if (res.findIndex(o => o === undefined) === -1) {
-                if (timeout_handle) clearTimeout(timeout_handle);
-                if (!not_subscribed_yet) chain_store.unsubscribe(onUpdate);
+                if (timeout_handle) {
+                    clearTimeout(timeout_handle);
+                }
+                if (!not_subscribed_yet) {
+                    chain_store.unsubscribe(onUpdate);
+                }
                 resolve(res);
                 return true;
             }
@@ -1798,8 +1858,9 @@ function FetchChainObjects(method, object_ids, timeout, subMap) {
         }
 
         let resolved = onUpdate(true);
-        if (!resolved) chain_store.subscribe(onUpdate);
-
+        if (!resolved) {
+            chain_store.subscribe(onUpdate);
+        }
         if (timeout && !resolved)
             timeout_handle = setTimeout(() => {
                 chain_store.unsubscribe(onUpdate);
@@ -1817,12 +1878,15 @@ chain_store.FetchChainObjects = FetchChainObjects;
 
 function FetchChain(methodName, objectIds, timeout = 3000, subMap = {}) {
     let method = chain_store[methodName];
-    if (!method)
+    if (!method) {
         throw new Error("ChainStore does not have method " + methodName);
+    }
 
     let arrayIn = Array.isArray(objectIds);
-    if (!arrayIn) objectIds = [objectIds];
-
+    if (!arrayIn) {
+        objectIds = [objectIds];
+    }
+    
     return chain_store
         .FetchChainObjects(method, List(objectIds), timeout, subMap)
         .then(res => (arrayIn ? res : res.get(0)));
