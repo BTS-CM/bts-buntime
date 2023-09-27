@@ -6,12 +6,12 @@ class ChainWebSocket {
   public on_close: (() => void) | null = null; // Initialize to null
   public on_reconnect: (() => void) | null;
   public keepAliveCb: ((closed: boolean) => void) | null;
-  
+  public ws: WebSocket | null = null; // Initialize to null
+  public statusCb: (status: string) => void;
+
   private url: string;
-  private statusCb: (status: string) => void;
   private current_reject: ((reason?: any) => void) | null;
   private current_resolve: (() => void) | null = null; // Initialize to null
-  private ws: WebSocket | null = null; // Initialize to null
   private connectionTimeout: any; // Initialize to null
   private keepalive_timer: ReturnType<typeof setInterval> | undefined;
   private closed: boolean;
