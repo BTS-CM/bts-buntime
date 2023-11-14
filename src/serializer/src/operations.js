@@ -76,11 +76,6 @@ export const limit_order_cancel_operation_fee_parameters = new Serializer(
     { fee: uint64 }
 );
 
-export const limit_order_update_operation_fee_parameters = new Serializer(
-    "limit_order_update_operation_fee_parameters",
-    { fee: uint64 }
-);
-
 export const call_order_update_operation_fee_parameters = new Serializer(
     "call_order_update_operation_fee_parameters",
     { fee: uint64 }
@@ -533,11 +528,29 @@ export const credit_deal_expired_operation_fee_parameters = new Serializer(
     {}
 );
 
+export const liquidity_pool_update_operation_fee_parameters = new Serializer(
+    "liquidity_pool_update_operation_fee_parameters",
+    {
+        fee: uint64,
+    }
+);
+
+export const credit_deal_update_operation_fee_parameters = new Serializer(
+    "credit_deal_update_operation_fee_parameters",
+    {
+        fee: uint64,
+    }
+);
+
+export const limit_order_update_operation_fee_parameters = new Serializer(
+    "limit_order_update_operation_fee_parameters",
+    { fee: uint64 }
+);
+
 var fee_parameters = static_variant([
     transfer_operation_fee_parameters,
     limit_order_create_operation_fee_parameters,
     limit_order_cancel_operation_fee_parameters,
-    limit_order_update_operation_fee_parameters,
     call_order_update_operation_fee_parameters,
     fill_order_operation_fee_parameters,
     account_create_operation_fee_parameters,
@@ -610,6 +623,9 @@ var fee_parameters = static_variant([
     credit_offer_accept_operation_fee_parameters,
     credit_deal_repay_operation_fee_parameters,
     credit_deal_expired_operation_fee_parameters,
+    liquidity_pool_update_operation_fee_parameters,
+    credit_deal_update_operation_fee_parameters,
+    limit_order_update_operation_fee_parameters,
 ]);
 
 export const fee_schedule = new Serializer("fee_schedule", {
@@ -625,16 +641,6 @@ export const asset = new Serializer("asset", {
 });
 
 var operation_result = static_variant([void_result, object_id_type, asset]);
-
-export const create_take_profit_order_action = new Serializer("create_take_profit_order_action", {
-    fee_asset_id: protocol_id_type("asset"),
-    spread_percent: uint16,
-    size_percent: uint16,
-    expiration_seconds: uint32,
-    repeat: bool,
-});
-
-var limit_order_auto_action = static_variant([create_take_profit_order_action]);
 
 export const processed_transaction = new Serializer("processed_transaction", {
     ref_block_num: uint16,
@@ -689,6 +695,16 @@ export const transfer = new Serializer("transfer", {
     extensions: set(future_extensions),
 });
 
+export const create_take_profit_order_action = new Serializer("create_take_profit_order_action", {
+    fee_asset_id: protocol_id_type("asset"),
+    spread_percent: uint16,
+    size_percent: uint16,
+    expiration_seconds: uint32,
+    repeat: bool,
+});
+
+var limit_order_auto_action = static_variant([create_take_profit_order_action]);
+
 export const limit_order_create = new Serializer("limit_order_create", {
     fee: asset,
     seller: protocol_id_type("account"),
@@ -702,17 +718,6 @@ export const limit_order_create = new Serializer("limit_order_create", {
             type: array(limit_order_auto_action),
         },
     ]),
-});
-
-// Op 77: limit_order_update_operation
-export const limit_order_update = new Serializer("limit_order_update", {
-    fee: asset,
-    account_id_type: protocol_id_type("account"),
-    limit_order_id_type: protocol_id_type("limit_order"),
-    new_price: optional(price),
-    delta_amount_to_sell: optional(asset),
-    new_expiration: optional(time_point_sec),
-    on_fill: optional(array(limit_order_auto_action)),
 });
 
 export const limit_order_cancel = new Serializer("limit_order_cancel", {
@@ -1460,16 +1465,6 @@ export const liquidity_pool_create = new Serializer("liquidity_pool_create", {
     extensions: set(future_extensions),
 });
 
-// Op 75: liquidity_pool_update_operation
-export const liquidity_pool_update = new Serializer("liquidity_pool_update", {
-    fee: asset,
-    account: protocol_id_type("account"),
-    pool: protocol_id_type("liquidity_pool"),
-    taker_fee_percent: optional(uint16),
-    withdrawal_fee_percent: optional(uint16),
-    extensions: set(future_extensions),
-});
-
 export const liquidity_pool_delete = new Serializer("liquidity_pool_delete", {
     fee: asset,
     account: protocol_id_type("account"),
@@ -1593,15 +1588,6 @@ export const credit_offer_accept = new Serializer("credit_offer_accept", {
     extensions: set(future_extensions),
 });
 
-// Op 76: credit_deal_update_operation
-export const credit_deal_update = new Serializer("credit_deal_update", {
-    fee: asset,
-    account: protocol_id_type("account"),
-    deal_id: protocol_id_type("credit_deal"),
-    auto_repay: uint8,
-    extensions: set(future_extensions),
-});
-
 export const credit_deal_repay = new Serializer("credit_deal_repay", {
     fee: asset,
     account: protocol_id_type("account"),
@@ -1622,10 +1608,39 @@ export const credit_deal_expired = new Serializer("credit_deal_expired", {
     fee_rate: uint32,
 });
 
+// Op 75: liquidity_pool_update_operation
+export const liquidity_pool_update = new Serializer("liquidity_pool_update", {
+    fee: asset,
+    account: protocol_id_type("account"),
+    pool: protocol_id_type("liquidity_pool"),
+    taker_fee_percent: optional(uint16),
+    withdrawal_fee_percent: optional(uint16),
+    extensions: set(future_extensions),
+});
+
+// Op 76: credit_deal_update_operation
+export const credit_deal_update = new Serializer("credit_deal_update", {
+    fee: asset,
+    account: protocol_id_type("account"),
+    deal_id: protocol_id_type("credit_deal"),
+    auto_repay: uint8,
+    extensions: set(future_extensions),
+});
+
+// Op 77: limit_order_update_operation
+export const limit_order_update = new Serializer("limit_order_update", {
+    fee: asset,
+    account_id_type: protocol_id_type("account"),
+    limit_order_id_type: protocol_id_type("limit_order"),
+    new_price: optional(price),
+    delta_amount_to_sell: optional(asset),
+    new_expiration: optional(time_point_sec),
+    on_fill: optional(array(limit_order_auto_action)),
+});
+
 operation.st_operations = [
     transfer,
     limit_order_create,
-    limit_order_update,
     limit_order_cancel,
     call_order_update,
     fill_order,
@@ -1699,6 +1714,9 @@ operation.st_operations = [
     credit_offer_accept,
     credit_deal_repay,
     credit_deal_expired,
+    liquidity_pool_update,
+    credit_deal_update,
+    limit_order_update,
 ];
 
 export const transaction = new Serializer("transaction", {
